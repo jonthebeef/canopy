@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useEffect, type ReactNode } from 'react'
 import useSWR from 'swr'
 import { Archive, ArrowRight, GitBranch, Table2, Users } from 'lucide-react'
 import { AuthForm } from '@/components/auth-form'
@@ -10,6 +10,7 @@ import { UserMenu } from '@/components/user-menu'
 import { CreateWorkspaceForm, JoinWorkspaceForm } from '@/components/workspace-forms'
 import { useSession } from '@/lib/auth-client'
 import type { WorkspaceState } from '@/lib/ost'
+import { safeNextPath } from '@/lib/safe-next'
 
 const FEATURES = [
   { icon: GitBranch, title: 'One tree, two views', body: 'Map outcomes, opportunities, solutions and experiments on a canvas, or edit the same records in a sortable table.' },
@@ -61,18 +62,28 @@ function ErrorPage({ message = 'We could not find that page.' }: { message?: str
   )
 }
 
+function GuestPage({ children, destination = '/workspaces' }: { children: ReactNode; destination?: string }) {
+  const session = useSession()
+  useEffect(() => {
+    if (session.data?.user) window.location.replace(destination)
+  }, [destination, session.data?.user])
+  if (session.isPending || session.data?.user) return <LoadingPage />
+  return children
+}
+
 function HomePage() {
   useTitle('Canopy — Opportunity Solution Trees for product trios')
   return (
-    <div className="flex min-h-dvh flex-col">
-      <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5">
+    <GuestPage>
+      <div className="flex min-h-dvh flex-col">
+        <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5">
         <Brand />
         <nav className="flex items-center gap-2">
           <Button variant="ghost" nativeButton={false} render={<a href="/sign-in" />}>Sign in</Button>
           <Button nativeButton={false} render={<a href="/sign-up" />}>Get started</Button>
         </nav>
-      </header>
-      <main className="flex flex-1 flex-col">
+        </header>
+        <main className="flex flex-1 flex-col">
         <section className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 pt-16 pb-20 md:pt-24">
           <p className="font-mono text-xs uppercase tracking-widest text-primary">Opportunity Solution Trees</p>
           <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-balance md:text-6xl">Your discovery work, structured instead of stickied.</h1>
@@ -93,22 +104,25 @@ function HomePage() {
             ))}
           </ul>
         </section>
-      </main>
-      <footer className="mx-auto w-full max-w-6xl px-6 py-8 text-sm text-muted-foreground">Runs on Cloudflare Workers + D1.</footer>
-    </div>
+        </main>
+        <footer className="mx-auto w-full max-w-6xl px-6 py-8 text-sm text-muted-foreground">Runs on Cloudflare Workers + D1.</footer>
+      </div>
+    </GuestPage>
   )
 }
 
 function AuthPage({ mode }: { mode: 'sign-in' | 'sign-up' }) {
   useTitle(`${mode === 'sign-in' ? 'Sign in' : 'Create account'} — Canopy`)
-  const next = new URLSearchParams(location.search).get('next') ?? undefined
+  const next = safeNextPath(new URLSearchParams(location.search).get('next'))
   return (
-    <AuthShell
-      title={mode === 'sign-in' ? 'Welcome back' : 'Create your account'}
-      subtitle={mode === 'sign-in' ? 'Sign in to continue to your opportunity solution trees.' : 'Join your product trio or start a new opportunity solution tree.'}
-    >
-      <AuthForm mode={mode} next={next} />
-    </AuthShell>
+    <GuestPage destination={next}>
+      <AuthShell
+        title={mode === 'sign-in' ? 'Welcome back' : 'Create your account'}
+        subtitle={mode === 'sign-in' ? 'Sign in to continue to your opportunity solution trees.' : 'Join your product trio or start a new opportunity solution tree.'}
+      >
+        <AuthForm mode={mode} next={next} />
+      </AuthShell>
+    </GuestPage>
   )
 }
 

@@ -27,6 +27,7 @@ import {
   toTreeNode,
   type RequestContext,
 } from '@/lib/workspace'
+import { hasTrustedMutationOrigin } from '@/src/worker/security'
 
 type Bindings = AuthEnv
 type AppContext = Context<{ Bindings: Bindings }>
@@ -34,13 +35,16 @@ type AppContext = Context<{ Bindings: Bindings }>
 const app = new Hono<{ Bindings: Bindings }>()
 
 app.use('/api/*', async (c, next) => {
-  await next()
   c.header('Cache-Control', 'no-store')
   c.header('X-Content-Type-Options', 'nosniff')
   c.header('Referrer-Policy', 'strict-origin-when-cross-origin')
   c.header('Strict-Transport-Security', 'max-age=63072000')
   c.header('X-Frame-Options', 'SAMEORIGIN')
   c.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+  if (!hasTrustedMutationOrigin(c.req.raw)) {
+    return c.json({ error: 'Invalid request origin' }, 403)
+  }
+  await next()
 })
 
 async function requestContext(c: AppContext): Promise<RequestContext> {
@@ -52,16 +56,21 @@ async function requestContext(c: AppContext): Promise<RequestContext> {
   }
 }
 
-async function handle<T>(c: AppContext, run: () => Promise<T>) {
+async function handle<T>(
+  c: AppContext,
+  run: () => Promise<T | Response>,
+  fallbackMessage = 'Something went wrong',
+) {
   try {
-    return c.json(await run())
+    const result = await run()
+    return result instanceof Response ? result : c.json(result)
   } catch (error) {
     if (error instanceof HttpError) return c.json({ error: error.message }, error.status as 400)
     if (error instanceof ZodError) {
       return c.json({ error: error.issues[0]?.message ?? 'Invalid input' }, 400)
     }
     console.error('[api] unexpected error', error)
-    return c.json({ error: 'Something went wrong' }, 500)
+    return c.json({ error: fallbackMessage }, 500)
   }
 }
 
@@ -159,8 +168,8 @@ app.post('/api/workspaces/join', (c) =>
 
 app.get('/api/invites/:code', (c) =>
   handle(c, async () => {
-    await requestContext(c)
-    const workspace = await getDb(c.env.DB).query.workspace.findFirst({
+    const { db } = await requestContext(c)
+    const workspace = await db.query.workspace.findFirst({
       columns: { id: true, name: true },
       where: eq(schema.workspace.inviteCode, c.req.param('code')),
     })
@@ -337,8 +346,8 @@ function csvCell(value: unknown) {
   return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
 }
 
-app.get('/api/w/:id/export', async (c) => {
-  try {
+app.get('/api/w/:id/export', (c) =>
+  handle(c, async () => {
     const id = c.req.param('id')
     const includeArchived = c.req.query('archived') === '1'
     const { db } = await requireMember(id, await requestContext(c))
@@ -404,12 +413,8 @@ app.get('/api/w/:id/export', async (c) => {
         'X-Content-Type-Options': 'nosniff',
       },
     })
-  } catch (error) {
-    if (error instanceof HttpError) return c.json({ error: error.message }, error.status as 400)
-    console.error('[export] failed', error)
-    return c.json({ error: 'Export failed' }, 500)
-  }
-})
+  }, 'Export failed'),
+)
 
 app.notFound((c) => c.json({ error: 'API route not found' }, 404))
 

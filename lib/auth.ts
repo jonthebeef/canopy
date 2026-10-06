@@ -30,6 +30,9 @@ function createAuth(env: AuthEnv, baseURL: string, isLocal: boolean) {
       window: 60,
       max: 100,
       customRules: {
+        // Session reads are safe and frequent. Avoid a D1 rate-limit write on
+        // every client session refresh; mutations remain rate limited below.
+        '/get-session': false,
         '/sign-in/email': { window: 60, max: 5 },
         '/sign-up/email': { window: 60, max: 3 },
       },
@@ -43,6 +46,13 @@ function createAuth(env: AuthEnv, baseURL: string, isLocal: boolean) {
     session: {
       expiresIn: 60 * 60 * 24 * 7,
       updateAge: 60 * 60 * 24,
+      // Most API requests only need to verify the current user. Cache the
+      // session in a short-lived signed cookie so they avoid a D1 lookup.
+      cookieCache: {
+        enabled: true,
+        maxAge: 5 * 60,
+        strategy: 'compact',
+      },
     },
     advanced: {
       ipAddress: { ipAddressHeaders: ['cf-connecting-ip'] },
