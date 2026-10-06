@@ -41,13 +41,46 @@ export const ALLOWED_CHILDREN: Record<NodeType, NodeType[]> = {
   experiment: [],
 }
 
-export const IMPACT_OPTIONS = [
-  { value: 3, label: '3 — Massive' },
-  { value: 2, label: '2 — High' },
-  { value: 1, label: '1 — Medium' },
-  { value: 0.5, label: '0.5 — Low' },
-  { value: 0.25, label: '0.25 — Minimal' },
+export type RiceKey = 'reach' | 'impact' | 'confidence' | 'effort'
+
+/** Reach, Impact and Effort are scored 0–10 (decimals allowed); Confidence is a % in 10% steps. */
+export const RICE_MAX = 10
+export const EFFORT_MIN = 0.1
+export const CONFIDENCE_STEPS = [100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 0]
+
+export const RICE_FIELDS: { key: RiceKey; label: string; hint: string }[] = [
+  { key: 'reach', label: 'Reach', hint: '0–10' },
+  { key: 'impact', label: 'Impact', hint: '0–10' },
+  { key: 'confidence', label: 'Confidence', hint: '10% steps' },
+  { key: 'effort', label: 'Effort', hint: '0.1–10' },
 ]
+
+export const EVIDENCE_KINDS = ['insight', 'metric', 'quote', 'research', 'other'] as const
+export type EvidenceKind = (typeof EVIDENCE_KINDS)[number]
+
+export const EVIDENCE_LABEL: Record<EvidenceKind, string> = {
+  insight: 'User insight',
+  metric: 'Metric',
+  quote: 'Quote',
+  research: 'Research',
+  other: 'Other',
+}
+
+export type Evidence = {
+  id: string
+  nodeId: string
+  kind: EvidenceKind
+  summary: string
+  value: string
+  detail: string
+  source: string
+  archivedAt: number | null
+  archivedBy: string | null
+  createdBy: string
+  createdAt: number
+  updatedBy: string
+  updatedAt: number
+}
 
 export type TreeNode = {
   id: string
@@ -89,6 +122,7 @@ export type WorkspaceState = {
   me: { id: string; role: 'admin' | 'member' }
   members: Member[]
   nodes: TreeNode[]
+  evidence: Evidence[]
   revision: number
 }
 
@@ -115,7 +149,8 @@ export function riceScore(n: Pick<TreeNode, 'reach' | 'impact' | 'confidence' | 
 export function formatScore(score: number | null) {
   if (score == null) return '—'
   if (score >= 100) return Math.round(score).toLocaleString()
-  return score.toFixed(1)
+  if (score >= 1) return score.toFixed(1)
+  return score.toFixed(2)
 }
 
 export const ONLINE_WINDOW_MS = 20_000

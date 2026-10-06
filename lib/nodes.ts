@@ -5,7 +5,9 @@ import { schema } from '@/lib/db'
 import type { AuditChanges } from '@/lib/db/schema'
 import {
   ALLOWED_CHILDREN,
+  EFFORT_MIN,
   NODE_STATUSES,
+  RICE_MAX,
   NODE_TYPES,
   STATUS_LABEL,
   TYPE_LABEL,
@@ -15,16 +17,22 @@ import { HttpError, newId, recordAudit, requireMember, toTreeNode } from '@/lib/
 
 const ADMIN_ONLY_TYPES: NodeType[] = ['goal', 'outcome']
 
-const score = (max: number) => z.number().min(0).max(max).nullable()
+const outOfTen = z.number().min(0, 'Use 0–10').max(RICE_MAX, 'Use 0–10').nullable()
 
 const editableFields = {
   title: z.string().trim().min(1, 'Title is required').max(200),
   description: z.string().max(5000),
   status: z.enum(NODE_STATUSES),
-  reach: score(1_000_000_000),
-  impact: score(10),
-  confidence: score(100),
-  effort: z.number().min(0.01).max(10_000).nullable(),
+  reach: outOfTen,
+  impact: outOfTen,
+  confidence: z
+    .number()
+    .int()
+    .min(0)
+    .max(100)
+    .refine((v) => v % 10 === 0, 'Confidence goes in 10% steps')
+    .nullable(),
+  effort: z.number().min(EFFORT_MIN, 'Effort must be at least 0.1').max(RICE_MAX, 'Use 0.1–10').nullable(),
 }
 
 export const createNodeSchema = z.object({

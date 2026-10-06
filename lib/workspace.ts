@@ -4,7 +4,7 @@ import { nanoid } from 'nanoid'
 import { getDb, schema, type Db } from '@/lib/db'
 import { getSession } from '@/lib/auth'
 import type { AuditChanges } from '@/lib/db/schema'
-import type { TreeNode, WorkspaceState } from '@/lib/ost'
+import type { Evidence, TreeNode, WorkspaceState } from '@/lib/ost'
 
 export class HttpError extends Error {
   constructor(
@@ -39,6 +39,16 @@ export async function requireAdmin(workspaceId: string) {
 export function toTreeNode(row: typeof schema.node.$inferSelect): TreeNode {
   return {
     ...row,
+    archivedAt: row.archivedAt ? row.archivedAt.getTime() : null,
+    createdAt: row.createdAt.getTime(),
+    updatedAt: row.updatedAt.getTime(),
+  }
+}
+
+export function toEvidence(row: typeof schema.evidence.$inferSelect): Evidence {
+  const { workspaceId: _ws, ...rest } = row
+  return {
+    ...rest,
     archivedAt: row.archivedAt ? row.archivedAt.getTime() : null,
     createdAt: row.createdAt.getTime(),
     updatedAt: row.updatedAt.getTime(),
@@ -83,7 +93,7 @@ export async function loadWorkspaceState(workspaceId: string): Promise<Workspace
       )
   }
 
-  const [ws, members, nodes, latest] = await Promise.all([
+  const [ws, members, nodes, evidence, latest] = await Promise.all([
     db.query.workspace.findFirst({ where: eq(schema.workspace.id, workspaceId) }),
     db
       .select({
@@ -97,6 +107,7 @@ export async function loadWorkspaceState(workspaceId: string): Promise<Workspace
       .innerJoin(schema.user, eq(schema.user.id, schema.member.userId))
       .where(eq(schema.member.workspaceId, workspaceId)),
     db.select().from(schema.node).where(eq(schema.node.workspaceId, workspaceId)),
+    db.select().from(schema.evidence).where(eq(schema.evidence.workspaceId, workspaceId)),
     db
       .select({ id: schema.auditEvent.id })
       .from(schema.auditEvent)
@@ -115,6 +126,7 @@ export async function loadWorkspaceState(workspaceId: string): Promise<Workspace
         m.userId === user.id ? now : m.lastSeenAt ? m.lastSeenAt.getTime() : null,
     })),
     nodes: nodes.map(toTreeNode),
+    evidence: evidence.map(toEvidence),
     revision: latest[0]?.id ?? 0,
   }
 }

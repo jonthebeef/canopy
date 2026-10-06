@@ -3,7 +3,15 @@
 import { useCallback, useMemo, useRef } from 'react'
 import useSWR, { useSWRConfig } from 'swr'
 import { toast } from 'sonner'
-import type { ActivityEvent, NodeStatus, NodeType, TreeNode, WorkspaceState } from '@/lib/ost'
+import type {
+  ActivityEvent,
+  Evidence,
+  EvidenceKind,
+  NodeStatus,
+  NodeType,
+  TreeNode,
+  WorkspaceState,
+} from '@/lib/ost'
 
 export const LIVE_SYNC_MS = 2_000
 
@@ -27,6 +35,19 @@ export type EditableFields = Partial<{
   confidence: number | null
   effort: number | null
 }>
+
+export type EvidenceInput = {
+  kind: EvidenceKind
+  summary: string
+  value?: string
+  detail?: string
+  source?: string
+}
+
+type EvidencePatch =
+  | { op: 'update'; fields: Partial<Required<EvidenceInput>> }
+  | { op: 'archive' }
+  | { op: 'restore' }
 
 type Patch =
   | { op: 'update'; fields: EditableFields }
@@ -137,7 +158,75 @@ export function useWorkspace(workspaceId: string, fallbackData?: WorkspaceState)
     [mutate, refreshActivity, workspaceId],
   )
 
-  return { ...swr, byId, patchNode, createNode }
+  const createEvidence = useCallback(
+    async (input: EvidenceInput & { nodeId: string }) => {
+      try {
+        const created = await fetchJson<Evidence>(`/api/w/${workspaceId}/evidence`, {
+          method: 'POST',
+          body: JSON.stringify(input),
+        })
+        await mutate(
+          (current) => current && { ...current, evidence: [...current.evidence, created] },
+          { revalidate: false },
+        )
+        refreshActivity()
+        return created
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Could not add evidence')
+        return null
+      }
+    },
+    [mutate, refreshActivity, workspaceId],
+  )
+
+  const patchEvidenceNow = useCallback(
+    async (evidenceId: string, patch: EvidencePatch) => {
+      const now = Date.now()
+      const replace = (current: WorkspaceState | undefined, next: (e: Evidence) => Evidence) =>
+        current && {
+          ...current,
+          evidence: current.evidence.map((e) => (e.id === evidenceId ? next(e) : e)),
+        }
+      try {
+        await mutate(
+          async (current) => {
+            const saved = await fetchJson<Evidence>(`/api/w/${workspaceId}/evidence/${evidenceId}`, {
+              method: 'PATCH',
+              body: JSON.stringify(patch),
+            })
+            return replace(current, () => saved)
+          },
+          {
+            optimisticData: (current) =>
+              replace(current, (e) =>
+                patch.op === 'update'
+                  ? { ...e, ...patch.fields, updatedAt: now }
+                  : { ...e, archivedAt: patch.op === 'archive' ? now : null },
+              ) as WorkspaceState,
+            rollbackOnError: true,
+            revalidate: false,
+          },
+        )
+        refreshActivity()
+        return true
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Could not save evidence')
+        return false
+      }
+    },
+    [mutate, refreshActivity, workspaceId],
+  )
+
+  const patchEvidence = useCallback(
+    (evidenceId: string, patch: EvidencePatch) => {
+      const run = queue.current.then(() => patchEvidenceNow(evidenceId, patch))
+      queue.current = run.catch(() => undefined)
+      return run
+    },
+    [patchEvidenceNow],
+  )
+
+  return { ...swr, byId, patchNode, createNode, createEvidence, patchEvidence }
 }
 
 export function useActivity(workspaceId: string, nodeId?: string) {

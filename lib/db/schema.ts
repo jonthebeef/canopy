@@ -150,6 +150,34 @@ export const node = sqliteTable(
   ],
 )
 
+export const evidence = sqliteTable(
+  'evidence',
+  {
+    id: text('id').primaryKey(),
+    workspaceId: text('workspace_id')
+      .notNull()
+      .references(() => workspace.id, { onDelete: 'cascade' }),
+    nodeId: text('node_id').notNull(),
+    kind: text('kind', {
+      enum: ['insight', 'metric', 'quote', 'research', 'other'],
+    }).notNull(),
+    summary: text('summary').notNull(),
+    value: text('value').notNull().default(''),
+    detail: text('detail').notNull().default(''),
+    source: text('source').notNull().default(''),
+    archivedAt: integer('archived_at', { mode: 'timestamp_ms' }),
+    archivedBy: text('archived_by'),
+    createdBy: text('created_by').notNull(),
+    createdAt: timestamp('created_at'),
+    updatedBy: text('updated_by').notNull(),
+    updatedAt: timestamp('updated_at'),
+  },
+  (t) => [
+    index('evidence_workspace_idx').on(t.workspaceId),
+    index('evidence_node_idx').on(t.nodeId),
+  ],
+)
+
 export const auditEvent = sqliteTable(
   'audit_event',
   {

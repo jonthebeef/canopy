@@ -16,9 +16,9 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
   ancestry,
-  IMPACT_OPTIONS,
   isEffectivelyArchived,
   NODE_STATUSES,
+  RICE_FIELDS,
   riceScore,
   STATUS_LABEL,
   TYPE_LABEL,
@@ -28,7 +28,8 @@ import {
 import { canAddChild, descendantIds, validNewParents } from '@/lib/tree'
 import { ActivityList } from './activity-list'
 import { useWs } from './context'
-import { CommitNumber, CommitText, NativeSelect, ScoreChip, TypeTag } from './primitives'
+import { EvidenceSection } from './evidence-section'
+import { CommitText, NativeSelect, RiceInput, ScoreChip, TypeTag } from './primitives'
 
 export function NodePanel() {
   const { selectedId, byId, select } = useWs()
@@ -110,7 +111,7 @@ function NodeDetails({ node }: { node: TreeNode }) {
         <CommitText
           multiline
           aria-label="Description"
-          placeholder={locked ? '' : 'Add notes, evidence, interview snippets or links…'}
+          placeholder={locked ? '' : 'Add notes or context…'}
           value={node.description}
           disabled={locked}
           onCommit={(description) => update({ op: 'update', fields: { description } })}
@@ -146,56 +147,25 @@ function NodeDetails({ node }: { node: TreeNode }) {
           )}
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <RiceField label="Reach" hint="people / quarter">
-            <CommitNumber
-              aria-label="Reach"
-              value={node.reach}
-              min={0}
-              disabled={locked}
-              onCommit={(reach) => update({ op: 'update', fields: { reach } })}
-            />
-          </RiceField>
-          <RiceField label="Impact" hint="0.25 – 3">
-            <NativeSelect
-              aria-label="Impact"
-              value={node.impact == null ? '' : String(node.impact)}
-              disabled={locked}
-              onChange={(e) =>
-                update({
-                  op: 'update',
-                  fields: { impact: e.target.value === '' ? null : Number(e.target.value) },
-                })
-              }
-            >
-              <option value="">—</option>
-              {IMPACT_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </NativeSelect>
-          </RiceField>
-          <RiceField label="Confidence" hint="%">
-            <CommitNumber
-              aria-label="Confidence percent"
-              value={node.confidence}
-              min={0}
-              max={100}
-              disabled={locked}
-              onCommit={(confidence) => update({ op: 'update', fields: { confidence } })}
-            />
-          </RiceField>
-          <RiceField label="Effort" hint="person-weeks">
-            <CommitNumber
-              aria-label="Effort in person-weeks"
-              value={node.effort}
-              min={0.01}
-              disabled={locked}
-              onCommit={(effort) => update({ op: 'update', fields: { effort } })}
-            />
-          </RiceField>
+          {RICE_FIELDS.map(({ key, label, hint }) => (
+            <RiceField key={key} label={label} hint={hint}>
+              <RiceInput
+                field={key}
+                node={node}
+                disabled={locked}
+                onCommit={(v) => update({ op: 'update', fields: { [key]: v } })}
+              />
+            </RiceField>
+          ))}
         </div>
+        <p className="font-mono text-[11px] leading-relaxed text-muted-foreground">
+          (Reach × Impact × Confidence) ÷ Effort
+          {score != null &&
+            ` = (${node.reach} × ${node.impact} × ${node.confidence}%) ÷ ${node.effort}`}
+        </p>
       </section>
+
+      <EvidenceSection node={node} />
 
       {!locked && node.parentId && parents.length > 0 && (
         <div className="flex flex-col gap-2">

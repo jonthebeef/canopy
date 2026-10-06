@@ -3,7 +3,19 @@
 import { useState, type ComponentProps } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { formatScore, STATUS_LABEL, TYPE_LABEL, type NodeStatus, type NodeType } from '@/lib/ost'
+import {
+  CONFIDENCE_STEPS,
+  EFFORT_MIN,
+  formatScore,
+  RICE_FIELDS,
+  RICE_MAX,
+  STATUS_LABEL,
+  TYPE_LABEL,
+  type NodeStatus,
+  type NodeType,
+  type RiceKey,
+  type TreeNode,
+} from '@/lib/ost'
 
 export const TYPE_STYLE: Record<NodeType, string> = {
   goal: 'bg-foreground text-background',
@@ -142,12 +154,14 @@ export function CommitText({
   )
 }
 
+const DECIMAL = /^\d*(?:[.,]\d*)?$/
+
+/** Free-text decimal entry (accepts "7", "7.5", "7,5", ".5"); clamps to range on commit. */
 export function CommitNumber({
   value,
   onCommit,
   min,
   max,
-  step,
   className,
   ...props
 }: {
@@ -155,9 +169,9 @@ export function CommitNumber({
   onCommit: (value: number | null) => void
   min?: number
   max?: number
-  step?: number
 } & Omit<ComponentProps<'input'>, 'value' | 'onChange' | 'min' | 'max' | 'step' | 'type'>) {
   const [draft, setDraft] = useState<string | null>(null)
+  const [invalid, setInvalid] = useState(false)
   const shown = draft ?? (value == null ? '' : String(value))
 
   const commit = () => {
@@ -168,33 +182,92 @@ export function CommitNumber({
       if (value !== null) onCommit(null)
       return
     }
-    let num = Number(trimmed)
-    if (!Number.isFinite(num)) return
+    let num = Number(trimmed.replace(',', '.'))
+    if (!DECIMAL.test(trimmed) || !Number.isFinite(num) || trimmed === '.' || trimmed === ',') {
+      setInvalid(true)
+      return
+    }
     if (min != null) num = Math.max(min, num)
     if (max != null) num = Math.min(max, num)
+    num = Math.round(num * 100) / 100
     if (num !== value) onCommit(num)
   }
 
   return (
     <input
       {...props}
-      type="number"
+      type="text"
       inputMode="decimal"
-      min={min}
-      max={max}
-      step={step ?? 'any'}
+      autoComplete="off"
       value={shown}
+      aria-invalid={invalid || undefined}
       placeholder={props.placeholder ?? '—'}
-      onFocus={() => setDraft(value == null ? '' : String(value))}
+      onFocus={() => {
+        setInvalid(false)
+        setDraft(value == null ? '' : String(value))
+      }}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => {
         if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) e.currentTarget.blur()
+        if (e.key === 'Escape') {
+          setDraft(null)
+          requestAnimationFrame(() => (e.target as HTMLInputElement).blur())
+        }
       }}
       className={cn(
-        'h-8 w-full rounded-md border border-input bg-card px-2 text-right font-mono text-sm tabular-nums outline-none [appearance:textfield] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:opacity-60 [&::-webkit-inner-spin-button]:appearance-none',
+        'h-8 w-full rounded-md border border-input bg-card px-2 text-right font-mono text-sm tabular-nums outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:opacity-60 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20',
         className,
       )}
+    />
+  )
+}
+
+/** One input per RICE dimension — shared by the table and the detail panel. */
+export function RiceInput({
+  field,
+  node,
+  disabled,
+  onCommit,
+  className,
+}: {
+  field: RiceKey
+  node: TreeNode
+  disabled?: boolean
+  onCommit: (value: number | null) => void
+  className?: string
+}) {
+  const label = RICE_FIELDS.find((f) => f.key === field)!.label
+  if (field === 'confidence') {
+    const current = node.confidence
+    const offGrid = current != null && !CONFIDENCE_STEPS.includes(current)
+    return (
+      <NativeSelect
+        aria-label={`${label} percent`}
+        value={current == null ? '' : String(current)}
+        disabled={disabled}
+        onChange={(e) => onCommit(e.target.value === '' ? null : Number(e.target.value))}
+        className={cn('font-mono tabular-nums', className)}
+      >
+        <option value="">—</option>
+        {offGrid && <option value={current}>{current}%</option>}
+        {CONFIDENCE_STEPS.map((v) => (
+          <option key={v} value={v}>
+            {v}%
+          </option>
+        ))}
+      </NativeSelect>
+    )
+  }
+  return (
+    <CommitNumber
+      aria-label={`${label}, 0 to ${RICE_MAX}`}
+      value={node[field]}
+      min={field === 'effort' ? EFFORT_MIN : 0}
+      max={RICE_MAX}
+      disabled={disabled}
+      onCommit={onCommit}
+      className={className}
     />
   )
 }

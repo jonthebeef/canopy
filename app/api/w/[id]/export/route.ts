@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { schema } from '@/lib/db'
-import { STATUS_LABEL, TYPE_LABEL, ancestry, riceScore } from '@/lib/ost'
+import { EVIDENCE_LABEL, STATUS_LABEL, TYPE_LABEL, ancestry, riceScore, type EvidenceKind } from '@/lib/ost'
 import { HttpError, requireMember, toTreeNode } from '@/lib/workspace'
 
 function csvCell(value: unknown) {
@@ -17,9 +17,10 @@ export async function GET(req: Request, ctx: RouteContext<'/api/w/[id]/export'>)
   const includeArchived = new URL(req.url).searchParams.get('archived') === '1'
   try {
     const { db } = await requireMember(id)
-    const [ws, rows, users] = await Promise.all([
+    const [ws, rows, evidenceRows, users] = await Promise.all([
       db.query.workspace.findFirst({ where: eq(schema.workspace.id, id) }),
       db.select().from(schema.node).where(eq(schema.node.workspaceId, id)),
+      db.select().from(schema.evidence).where(eq(schema.evidence.workspaceId, id)),
       db
         .select({ id: schema.user.id, name: schema.user.name })
         .from(schema.member)
@@ -29,20 +30,29 @@ export async function GET(req: Request, ctx: RouteContext<'/api/w/[id]/export'>)
     const nodes = rows.map(toTreeNode)
     const byId = new Map(nodes.map((n) => [n.id, n]))
     const names = new Map(users.map((u) => [u.id, u.name]))
+    const evidenceByNode = new Map<string, string[]>()
+    for (const e of evidenceRows) {
+      if (e.archivedAt) continue
+      const kind = EVIDENCE_LABEL[e.kind as EvidenceKind] ?? e.kind
+      const line = [`[${kind}]`, e.value, e.summary, e.source && `(${e.source})`].filter(Boolean).join(' ')
+      evidenceByNode.set(e.nodeId, [...(evidenceByNode.get(e.nodeId) ?? []), line])
+    }
 
     const header = [
       'ID', 'Type', 'Title', 'Path', 'Status', 'Reach', 'Impact', 'Confidence %', 'Effort',
-      'RICE score', 'Description', 'Created by', 'Created at', 'Updated by', 'Updated at',
-      'Archived at', 'Archive reason',
+      'RICE score', 'Description', 'Evidence count', 'Evidence', 'Created by', 'Created at',
+      'Updated by', 'Updated at', 'Archived at', 'Archive reason',
     ]
     const lines = nodes
       .filter((n) => includeArchived || !n.archivedAt)
       .map((n) => {
         const path = ancestry(n.id, byId).map((a) => a.title).join(' › ')
         const score = riceScore(n)
+        const ev = evidenceByNode.get(n.id) ?? []
         return [
           n.id, TYPE_LABEL[n.type], n.title, path, STATUS_LABEL[n.status], n.reach, n.impact,
           n.confidence, n.effort, score == null ? '' : score.toFixed(2), n.description,
+          ev.length, ev.join('\n'),
           names.get(n.createdBy) ?? '', new Date(n.createdAt).toISOString(),
           names.get(n.updatedBy) ?? '', new Date(n.updatedAt).toISOString(),
           n.archivedAt ? new Date(n.archivedAt).toISOString() : '', n.archiveReason,

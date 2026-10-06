@@ -4,9 +4,9 @@ import { useMemo, useState } from 'react'
 import { ArrowDown, ArrowUp, ArchiveRestore, PanelRightOpen, Plus, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
-  IMPACT_OPTIONS,
   NODE_STATUSES,
   NODE_TYPES,
+  RICE_FIELDS,
   riceScore,
   STATUS_LABEL,
   TYPE_LABEL,
@@ -16,7 +16,7 @@ import {
 import { canAddChild, flattenTree, type FlatRow } from '@/lib/tree'
 import { cn } from '@/lib/utils'
 import { useWs } from './context'
-import { CommitNumber, CommitText, NativeSelect, ScoreChip, TypeTag } from './primitives'
+import { CommitText, NativeSelect, RiceInput, ScoreChip, TypeTag } from './primitives'
 
 type SortKey = 'tree' | 'rice' | 'updated' | 'title'
 
@@ -34,8 +34,9 @@ export function TableView() {
   const [sort, setSort] = useState<SortKey>('tree')
   const [desc, setDesc] = useState(true)
   const [query, setQuery] = useState('')
+  const [ranked, setRanked] = useState(false)
 
-  const rows = useMemo(() => {
+  const { rows, unscored } = useMemo(() => {
     let list: FlatRow[] = flattenTree(state.nodes, showArchived)
     const q = query.trim().toLowerCase()
     list = list.filter(
@@ -44,6 +45,11 @@ export function TableView() {
         (statusFilter === 'all' || node.status === statusFilter) &&
         (!q || node.title.toLowerCase().includes(q) || node.description.toLowerCase().includes(q)),
     )
+    if (ranked) {
+      const scoredRows = list.filter((r) => riceScore(r.node) != null)
+      scoredRows.sort((a, b) => riceScore(b.node)! - riceScore(a.node)!)
+      return { rows: scoredRows, unscored: list.length - scoredRows.length }
+    }
     if (sort !== 'tree') {
       const dir = desc ? -1 : 1
       list = [...list].sort((a, b) => {
@@ -59,15 +65,35 @@ export function TableView() {
         return a.node.title.localeCompare(b.node.title) * dir
       })
     }
-    return list
-  }, [state.nodes, showArchived, typeFilter, statusFilter, sort, desc, query])
+    return { rows: list, unscored: 0 }
+  }, [state.nodes, showArchived, typeFilter, statusFilter, sort, desc, query, ranked])
 
-  const flat = sort === 'tree'
+  const flat = !ranked && sort === 'tree'
   const scored = rows.filter((r) => riceScore(r.node) != null).length
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex flex-wrap items-end gap-3 border-b bg-card px-4 py-3">
+      <div className="flex flex-wrap items-center gap-3 border-b bg-card px-4 py-3">
+        <div role="radiogroup" aria-label="Table mode" className="flex rounded-md border bg-muted p-0.5">
+          {[
+            { value: false, label: 'All items' },
+            { value: true, label: 'Ranked by RICE' },
+          ].map((opt) => (
+            <button
+              key={opt.label}
+              type="button"
+              role="radio"
+              aria-checked={ranked === opt.value}
+              onClick={() => setRanked(opt.value)}
+              className={cn(
+                'h-7 rounded px-3 text-sm font-medium text-muted-foreground transition-colors',
+                ranked === opt.value && 'bg-card text-foreground shadow-sm',
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
         <label className="relative flex min-w-48 flex-1 items-center sm:max-w-xs">
           <span className="sr-only">Search items</span>
           <Search className="pointer-events-none absolute left-2.5 size-4 text-muted-foreground" aria-hidden="true" />
@@ -105,7 +131,7 @@ export function TableView() {
             </option>
           ))}
         </NativeSelect>
-        <div className="flex items-center gap-1">
+        <div className={cn('flex items-center gap-1', ranked && 'hidden')}>
           <NativeSelect
             aria-label="Sort by"
             value={sort}
@@ -130,7 +156,9 @@ export function TableView() {
           )}
         </div>
         <p className="ml-auto font-mono text-xs text-muted-foreground">
-          {rows.length} items · {scored} scored
+          {ranked
+            ? `${rows.length} ranked${unscored ? ` · ${unscored} unscored hidden` : ''}`
+            : `${rows.length} items · ${scored} scored`}
         </p>
       </div>
 
@@ -138,19 +166,30 @@ export function TableView() {
         <table className="w-full min-w-[960px] border-collapse text-sm">
           <thead className="sticky top-0 z-10 bg-muted text-left text-xs text-muted-foreground">
             <tr>
+              {ranked && (
+                <th scope="col" className="w-12 py-2 pl-4 font-medium">
+                  Rank
+                </th>
+              )}
               <th scope="col" className="px-3 py-2 font-medium">Item</th>
               <th scope="col" className="w-36 px-2 py-2 font-medium">Status</th>
-              <th scope="col" className="w-28 px-2 py-2 text-right font-medium">Reach</th>
-              <th scope="col" className="w-36 px-2 py-2 font-medium">Impact</th>
-              <th scope="col" className="w-24 px-2 py-2 text-right font-medium">Conf. %</th>
-              <th scope="col" className="w-24 px-2 py-2 text-right font-medium">Effort</th>
+              <th scope="col" className="w-20 px-2 py-2 text-right font-medium">
+                Reach <span className="font-normal opacity-70">/10</span>
+              </th>
+              <th scope="col" className="w-20 px-2 py-2 text-right font-medium">
+                Impact <span className="font-normal opacity-70">/10</span>
+              </th>
+              <th scope="col" className="w-24 px-2 py-2 font-medium">Confidence</th>
+              <th scope="col" className="w-20 px-2 py-2 text-right font-medium">
+                Effort <span className="font-normal opacity-70">/10</span>
+              </th>
               <th scope="col" className="w-24 px-2 py-2 text-right font-medium">RICE</th>
               <th scope="col" className="w-36 px-2 py-2 font-medium">Last edited</th>
               <th scope="col" className="w-20 px-2 py-2"><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ node, depth, path }) => {
+            {rows.map(({ node, depth, path }, index) => {
               const locked = !isAdmin && (node.type === 'goal' || node.type === 'outcome')
               const update = (fields: Parameters<typeof patchNode>[1] & { op: 'update' }) =>
                 patchNode(node.id, fields)
@@ -165,6 +204,9 @@ export function TableView() {
                     node.archivedAt && 'text-muted-foreground',
                   )}
                 >
+                  {ranked && (
+                    <td className="py-1.5 pl-4 font-mono text-sm font-semibold tabular-nums">{index + 1}</td>
+                  )}
                   <td className="py-1.5 pr-2" style={{ paddingLeft: flat ? 12 + depth * 20 : 12 }}>
                     <div className="flex items-center gap-2">
                       <TypeTag type={node.type} />
@@ -198,54 +240,16 @@ export function TableView() {
                       ))}
                     </NativeSelect>
                   </td>
-                  <td className="px-2 py-1.5">
-                    <CommitNumber
-                      aria-label="Reach"
-                      value={node.reach}
-                      min={0}
-                      disabled={locked}
-                      onCommit={(reach) => update({ op: 'update', fields: { reach } })}
-                    />
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <NativeSelect
-                      aria-label="Impact"
-                      value={node.impact == null ? '' : String(node.impact)}
-                      disabled={locked}
-                      onChange={(e) =>
-                        update({
-                          op: 'update',
-                          fields: { impact: e.target.value === '' ? null : Number(e.target.value) },
-                        })
-                      }
-                    >
-                      <option value="">—</option>
-                      {IMPACT_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </NativeSelect>
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <CommitNumber
-                      aria-label="Confidence percent"
-                      value={node.confidence}
-                      min={0}
-                      max={100}
-                      disabled={locked}
-                      onCommit={(confidence) => update({ op: 'update', fields: { confidence } })}
-                    />
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <CommitNumber
-                      aria-label="Effort in person-weeks"
-                      value={node.effort}
-                      min={0.01}
-                      disabled={locked}
-                      onCommit={(effort) => update({ op: 'update', fields: { effort } })}
-                    />
-                  </td>
+                  {RICE_FIELDS.map(({ key }) => (
+                    <td key={key} className="px-2 py-1.5">
+                      <RiceInput
+                        field={key}
+                        node={node}
+                        disabled={locked}
+                        onCommit={(v) => update({ op: 'update', fields: { [key]: v } })}
+                      />
+                    </td>
+                  ))}
                   <td className="px-2 py-1.5 text-right">
                     {score != null ? <ScoreChip score={score} /> : <span className="text-muted-foreground">—</span>}
                   </td>
@@ -294,7 +298,11 @@ export function TableView() {
           </tbody>
         </table>
         {rows.length === 0 && (
-          <p className="p-8 text-center text-sm text-muted-foreground">No items match these filters.</p>
+          <p className="p-8 text-center text-sm text-pretty text-muted-foreground">
+            {ranked
+              ? 'Nothing scored yet. Fill in Reach, Impact, Confidence and Effort on any item to rank it here.'
+              : 'No items match these filters.'}
+          </p>
         )}
       </div>
     </div>
