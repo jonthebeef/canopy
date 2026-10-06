@@ -198,6 +198,8 @@ Use:
 
 Create both D1 databases, update `wrangler.jsonc`, apply migrations, and add the production and Preview authentication secrets before treating the deployment as live.
 
+The build command must use OpenNext. A plain `pnpm run build` only creates `.next`, so the following Preview command will fail because `.open-next/worker.js` does not exist.
+
 ## Useful commands
 
 | Command | Purpose |
