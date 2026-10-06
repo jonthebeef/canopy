@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
-import { Activity, Download, GitBranch, Settings2, Table2 } from 'lucide-react'
+import { Activity, GitBranch, Settings2, Table2 } from 'lucide-react'
 import { Brand } from '@/components/brand'
 import { UserMenu } from '@/components/user-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -13,6 +13,7 @@ import { initials, isOnline, type WorkspaceState } from '@/lib/ost'
 import { cn } from '@/lib/utils'
 import { ActivityList } from './activity-list'
 import { AddNodeDialog } from './add-node-dialog'
+import { ExportButton } from './export-button'
 import { useWs, WorkspaceProvider } from './context'
 import { NodePanel } from './node-panel'
 import { TableView } from './table-view'
@@ -96,14 +97,7 @@ function Shell({ user }: { user: { name: string; email: string } }) {
 
           <div className="ml-auto flex items-center gap-3">
             <LiveIndicator offline={!!error} />
-            <Button
-              variant="outline"
-              size="sm"
-              nativeButton={false} render={<a href={`/api/w/${state.workspace.id}/export${showArchived ? '?archived=1' : ''}`} download />}
-            >
-              <Download aria-hidden="true" />
-              Export CSV
-            </Button>
+            <ExportButton workspaceId={state.workspace.id} includeArchived={showArchived} />
           </div>
         </div>
       </header>
