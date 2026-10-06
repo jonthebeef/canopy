@@ -1,10 +1,9 @@
-import 'server-only'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { schema } from '@/lib/db'
 import type { AuditChanges } from '@/lib/db/schema'
 import { EVIDENCE_KINDS, EVIDENCE_LABEL } from '@/lib/ost'
-import { HttpError, auditInsert, newId, requireMember, toEvidence } from '@/lib/workspace'
+import { HttpError, auditInsert, newId, requireMember, toEvidence, type RequestContext } from '@/lib/workspace'
 
 const evidenceFields = {
   kind: z.enum(EVIDENCE_KINDS),
@@ -33,8 +32,8 @@ type FieldName = keyof typeof evidenceFields
 
 const label = (kind: (typeof EVIDENCE_KINDS)[number]) => EVIDENCE_LABEL[kind].toLowerCase()
 
-export async function createEvidence(workspaceId: string, input: z.infer<typeof createEvidenceSchema>) {
-  const { db, user } = await requireMember(workspaceId)
+export async function createEvidence(context: RequestContext, workspaceId: string, input: z.infer<typeof createEvidenceSchema>) {
+  const { db, user } = await requireMember(workspaceId, context)
   const parent = await db.query.node.findFirst({
     where: and(eq(schema.node.id, input.nodeId), eq(schema.node.workspaceId, workspaceId)),
   })
@@ -68,11 +67,12 @@ export async function createEvidence(workspaceId: string, input: z.infer<typeof 
 }
 
 export async function patchEvidence(
+  context: RequestContext,
   workspaceId: string,
   evidenceId: string,
   input: z.infer<typeof patchEvidenceSchema>,
 ) {
-  const { db, user } = await requireMember(workspaceId)
+  const { db, user } = await requireMember(workspaceId, context)
   const current = await db.query.evidence.findFirst({
     where: and(eq(schema.evidence.id, evidenceId), eq(schema.evidence.workspaceId, workspaceId)),
   })

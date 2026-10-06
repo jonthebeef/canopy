@@ -1,47 +1,26 @@
-import 'server-only'
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
-import { headers } from 'next/headers'
-import { redirect } from 'next/navigation'
 import { getDb, schema } from '@/lib/db'
 
-// D1 bindings are only available per request on Cloudflare, so the auth
-// instance is created from the request's database binding.
-// The v0 sandbox does not always expose its preview hostnames as env vars, so in
-// development we also trust the exact host this request was addressed to. That is
-// a same-origin rule: a page served from another site still fails the check.
-async function requestOrigin() {
-  const h = await headers()
-  const host = h.get('x-forwarded-host') ?? h.get('host')
-  if (!host) return []
-  const proto =
-    h.get('x-forwarded-proto') ?? (host.startsWith('localhost') ? 'http' : 'https')
-  return [`${proto}://${host}`]
+export type AuthEnv = {
+  DB: D1Database
+  BETTER_AUTH_SECRET: string
+  BETTER_AUTH_URL?: string
+  CANOPY_PREVIEW?: string
 }
 
-// Fail loudly instead of running production with a default secret or an empty
-// trusted-origin list (which shows up as a confusing "Invalid origin" on sign-in).
-function assertProductionConfig(isPreview: boolean) {
-  if (process.env.NODE_ENV !== 'production') return
-  const required = isPreview ? ['BETTER_AUTH_SECRET'] : ['BETTER_AUTH_SECRET', 'BETTER_AUTH_URL']
-  const missing = required.filter((key) => !process.env[key])
-  if (missing.length) {
-    throw new Error(
-      `Missing ${missing.join(' and ')}. Set them on the Cloudflare Worker (wrangler secret put / dashboard) before deploying.`,
-    )
+export function getAuth(env: AuthEnv, request: Request) {
+  if (!env.BETTER_AUTH_SECRET) {
+    throw new Error('Missing BETTER_AUTH_SECRET. Add it with `wrangler secret put BETTER_AUTH_SECRET`.')
   }
-}
-
-export async function getAuth() {
-  // Reading request headers first opts callers out of static prerendering, so the
-  // config check runs per request on the deployed Worker, never during `next build`.
-  await headers()
-  const isPreview = process.env.CANOPY_PREVIEW === 'true'
-  const requestOrigins = await requestOrigin()
-  if (process.env.NEXT_PHASE !== 'phase-production-build') assertProductionConfig(isPreview)
-  const db = await getDb()
-  const devOrigins = process.env.NODE_ENV === 'development' ? requestOrigins : []
-  const previewOrigins = isPreview ? requestOrigins : []
+  const requestOrigin = new URL(request.url).origin
+  const isLocal = new URL(request.url).hostname === 'localhost'
+  const isPreview = env.CANOPY_PREVIEW === 'true'
+  if (!isLocal && !isPreview && !env.BETTER_AUTH_URL) {
+    throw new Error('Missing BETTER_AUTH_URL. Set it to the deployed Worker origin.')
+  }
+  const db = getDb(env.DB)
+  const baseURL = isLocal || isPreview ? requestOrigin : env.BETTER_AUTH_URL!
   return betterAuth({
     database: drizzleAdapter(db, {
       provider: 'sqlite',
@@ -55,7 +34,7 @@ export async function getAuth() {
     }),
     // In-memory limits reset per Worker isolate, so keep counters in D1.
     rateLimit: {
-      enabled: process.env.NODE_ENV === 'production',
+      enabled: !isLocal,
       storage: 'database',
       modelName: 'rateLimit',
       window: 60,
@@ -65,73 +44,18 @@ export async function getAuth() {
         '/sign-up/email': { window: 60, max: 3 },
       },
     },
-    baseURL:
-      process.env.BETTER_AUTH_URL ??
-      previewOrigins[0] ??
-      (process.env.VERCEL_PROJECT_PRODUCTION_URL
-        ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-        : process.env.VERCEL_URL
-          ? `https://${process.env.VERCEL_URL}`
-          : process.env.V0_RUNTIME_URL),
+    baseURL,
     emailAndPassword: {
       enabled: true,
       autoSignIn: true,
     },
-    trustedOrigins: [
-      ...(process.env.NODE_ENV === 'development'
-        ? [
-            'http://localhost:3000',
-            ...devOrigins,
-            ...(process.env.V0_RUNTIME_URL ? [process.env.V0_RUNTIME_URL] : []),
-            ...(process.env.V0_DEV_APP_URL ? [process.env.V0_DEV_APP_URL] : []),
-            ...(process.env.V0_BUILD_URL ? [process.env.V0_BUILD_URL] : []),
-            ...(process.env.V0_SANDBOX_URL ? [process.env.V0_SANDBOX_URL] : []),
-          ]
-        : []),
-      ...(process.env.NODE_ENV === 'production'
-        ? [
-            ...(process.env.BETTER_AUTH_URL ? [process.env.BETTER_AUTH_URL] : []),
-            ...(process.env.VERCEL_URL
-              ? [`https://${process.env.VERCEL_URL}`]
-              : []),
-            ...(process.env.VERCEL_PROJECT_PRODUCTION_URL
-              ? [`https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`]
-              : []),
-            ...previewOrigins,
-          ]
-        : []),
-    ],
+    trustedOrigins: [baseURL],
     session: {
       expiresIn: 60 * 60 * 24 * 7,
       updateAge: 60 * 60 * 24,
     },
-    ...(process.env.NODE_ENV === 'development'
-      ? {
-          advanced: {
-            // Required by the cross-site v0 preview iframe. Without these
-            // attributes, login succeeds but the next request appears signed out.
-            defaultCookieAttributes: {
-              sameSite: 'none' as const,
-              secure: true,
-            },
-          },
-        }
-      : {
-          advanced: {
-            // Cloudflare sets this to the real client IP; rate limits key off it.
-            ipAddress: { ipAddressHeaders: ['cf-connecting-ip'] },
-          },
-        }),
+    advanced: {
+      ipAddress: { ipAddressHeaders: ['cf-connecting-ip'] },
+    },
   })
-}
-
-export async function getSession() {
-  const auth = await getAuth()
-  return auth.api.getSession({ headers: await headers() })
-}
-
-export async function requireUser(next?: string) {
-  const session = await getSession()
-  if (!session?.user) redirect(next ? `/sign-in?next=${encodeURIComponent(next)}` : '/sign-in')
-  return session.user
 }

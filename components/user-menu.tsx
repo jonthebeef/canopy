@@ -1,6 +1,5 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
 import { LayoutGrid, LogOut } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
@@ -16,7 +15,6 @@ import { signOut } from '@/lib/auth-client'
 import { initials } from '@/lib/ost'
 
 export function UserMenu({ name, email }: { name: string; email: string }) {
-  const router = useRouter()
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -38,15 +36,14 @@ export function UserMenu({ name, email }: { name: string; email: string }) {
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
-          <DropdownMenuItem onClick={() => router.push('/workspaces')}>
+          <DropdownMenuItem onClick={() => window.location.assign('/workspaces')}>
             <LayoutGrid aria-hidden="true" />
             All workspaces
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={async () => {
               await signOut()
-              router.push('/sign-in')
-              router.refresh()
+              window.location.assign('/sign-in')
             }}
           >
             <LogOut aria-hidden="true" />

@@ -1,9 +1,8 @@
 'use client'
 
-import { useActionState, useState, useSyncExternalStore, useTransition } from 'react'
+import { useState, useSyncExternalStore, useTransition } from 'react'
 import { Archive, ArchiveRestore, Check, Copy, Loader2, Plus, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
-import { regenerateInvite, setMemberRole, updateWorkspace, type ActionState } from '@/app/actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -49,18 +48,29 @@ function Section({
 
 function DetailsSection() {
   const { state, isAdmin, mutate } = useWs()
-  const [result, action, pending] = useActionState(async (prev: ActionState, formData: FormData) => {
-    const res = await updateWorkspace(state.workspace.id, prev, formData)
-    if (res?.ok) {
-      toast.success('Saved')
-      mutate()
-    }
-    return res
-  }, null)
+  const [error, setError] = useState<string | null>(null)
+  const [pending, setPending] = useState(false)
+
+  async function save(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = new FormData(event.currentTarget)
+    setPending(true)
+    setError(null)
+    const response = await fetch(`/api/w/${state.workspace.id}/settings`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: form.get('name'), product: form.get('product') ?? '' }),
+    })
+    const result = await response.json() as { error?: string }
+    setPending(false)
+    if (!response.ok) return setError(result.error ?? 'Could not save workspace')
+    await mutate()
+    toast.success('Saved')
+  }
 
   return (
     <Section id="details" title="Team & product">
-      <form action={action} className="flex flex-col gap-4">
+      <form onSubmit={save} className="flex flex-col gap-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-2">
             <Label htmlFor="ws-name">Team / workspace name</Label>
@@ -78,9 +88,9 @@ function DetailsSection() {
             />
           </div>
         </div>
-        {result?.error && (
+        {error && (
           <p role="alert" className="text-sm text-destructive">
-            {result.error}
+            {error}
           </p>
         )}
         {isAdmin && (
@@ -250,9 +260,10 @@ function InviteSection() {
               disabled={pending}
               onClick={() =>
                 startTransition(async () => {
-                  const res = await regenerateInvite(state.workspace.id)
-                  if (res?.error) {
-                    toast.error(res.error)
+                  const response = await fetch(`/api/w/${state.workspace.id}/invite/reset`, { method: 'POST' })
+                  const result = await response.json() as { error?: string }
+                  if (!response.ok) {
+                    toast.error(result.error ?? 'Could not reset invite link')
                     return
                   }
                   await mutate()
@@ -303,9 +314,14 @@ function MembersSection() {
                   const role = e.target.value as 'admin' | 'member'
                   startTransition(async () => {
                     try {
-                      const res = await setMemberRole(state.workspace.id, m.userId, role)
-                      if (res?.error) {
-                        toast.error(res.error)
+                      const response = await fetch(`/api/w/${state.workspace.id}/members/${m.userId}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ role }),
+                      })
+                      const result = await response.json() as { error?: string }
+                      if (!response.ok) {
+                        toast.error(result.error ?? 'Could not change role')
                         return
                       }
                       await mutate()

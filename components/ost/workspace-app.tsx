@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { useState } from 'react'
 import { Activity, GitBranch, Settings2, Table2 } from 'lucide-react'
 import { Brand } from '@/components/brand'
@@ -59,7 +58,7 @@ function Shell({ user }: { user: { name: string; email: string } }) {
           </div>
           <Presence />
           {isAdmin && (
-            <Button variant="ghost" size="sm" nativeButton={false} render={<Link href={`/w/${state.workspace.id}/setup`} />}>
+            <Button variant="ghost" size="sm" nativeButton={false} render={<a href={`/w/${state.workspace.id}/setup`} />}>
               <Settings2 aria-hidden="true" />
               <span className="hidden sm:inline">Setup</span>
             </Button>

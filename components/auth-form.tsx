@@ -1,7 +1,5 @@
 'use client'
 
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -11,7 +9,6 @@ import { signIn, signUp } from '@/lib/auth-client'
 import { safeNextPath } from '@/lib/safe-next'
 
 export function AuthForm({ mode, next }: { mode: 'sign-in' | 'sign-up'; next?: string }) {
-  const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
   const destination = safeNextPath(next)
@@ -40,8 +37,7 @@ export function AuthForm({ mode, next }: { mode: 'sign-in' | 'sign-up'; next?: s
       )
       return
     }
-    router.push(destination)
-    router.refresh()
+    window.location.assign(destination)
   }
 
   const query = next ? `?next=${encodeURIComponent(next)}` : ''
@@ -85,16 +81,16 @@ export function AuthForm({ mode, next }: { mode: 'sign-in' | 'sign-up'; next?: s
         {mode === 'sign-up' ? (
           <>
             Already have an account?{' '}
-            <Link href={`/sign-in${query}`} className="font-medium text-primary underline-offset-4 hover:underline">
+            <a href={`/sign-in${query}`} className="font-medium text-primary underline-offset-4 hover:underline">
               Sign in
-            </Link>
+            </a>
           </>
         ) : (
           <>
             New to Canopy?{' '}
-            <Link href={`/sign-up${query}`} className="font-medium text-primary underline-offset-4 hover:underline">
+            <a href={`/sign-up${query}`} className="font-medium text-primary underline-offset-4 hover:underline">
               Create an account
-            </Link>
+            </a>
           </>
         )}
       </p>
