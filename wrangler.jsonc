@@ -20,9 +20,23 @@
       "binding": "DB",
       "database_name": "opportunity-tree",
       "database_id": "c1534672-db8c-4b0b-a31b-4618fb228292",
+      "preview_database_id": "16b241e8-fbae-4f90-937e-558adcfc538e",
       "migrations_dir": "drizzle"
     }
   ],
+  "previews": {
+    "vars": {
+      "CANOPY_PREVIEW": "true"
+    },
+    "d1_databases": [
+      {
+        "binding": "DB",
+        "database_name": "opportunity-solution-tree-preview",
+        "database_id": "16b241e8-fbae-4f90-937e-558adcfc538e",
+        "migrations_dir": "drizzle"
+      }
+    ]
+  },
   "observability": {
     "enabled": true
   }

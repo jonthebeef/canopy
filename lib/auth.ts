@@ -21,9 +21,10 @@ async function requestOrigin() {
 
 // Fail loudly instead of running production with a default secret or an empty
 // trusted-origin list (which shows up as a confusing "Invalid origin" on sign-in).
-function assertProductionConfig() {
+function assertProductionConfig(isPreview: boolean) {
   if (process.env.NODE_ENV !== 'production') return
-  const missing = ['BETTER_AUTH_SECRET', 'BETTER_AUTH_URL'].filter((k) => !process.env[k])
+  const required = isPreview ? ['BETTER_AUTH_SECRET'] : ['BETTER_AUTH_SECRET', 'BETTER_AUTH_URL']
+  const missing = required.filter((key) => !process.env[key])
   if (missing.length) {
     throw new Error(
       `Missing ${missing.join(' and ')}. Set them on the Cloudflare Worker (wrangler secret put / dashboard) before deploying.`,
@@ -35,9 +36,12 @@ export async function getAuth() {
   // Reading request headers first opts callers out of static prerendering, so the
   // config check runs per request on the deployed Worker, never during `next build`.
   await headers()
-  if (process.env.NEXT_PHASE !== 'phase-production-build') assertProductionConfig()
+  const isPreview = process.env.CANOPY_PREVIEW === 'true'
+  const requestOrigins = await requestOrigin()
+  if (process.env.NEXT_PHASE !== 'phase-production-build') assertProductionConfig(isPreview)
   const db = await getDb()
-  const devOrigins = process.env.NODE_ENV === 'development' ? await requestOrigin() : []
+  const devOrigins = process.env.NODE_ENV === 'development' ? requestOrigins : []
+  const previewOrigins = isPreview ? requestOrigins : []
   return betterAuth({
     database: drizzleAdapter(db, {
       provider: 'sqlite',
@@ -63,6 +67,7 @@ export async function getAuth() {
     },
     baseURL:
       process.env.BETTER_AUTH_URL ??
+      previewOrigins[0] ??
       (process.env.VERCEL_PROJECT_PRODUCTION_URL
         ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
         : process.env.VERCEL_URL
@@ -92,6 +97,7 @@ export async function getAuth() {
             ...(process.env.VERCEL_PROJECT_PRODUCTION_URL
               ? [`https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`]
               : []),
+            ...previewOrigins,
           ]
         : []),
     ],

@@ -59,6 +59,7 @@ type Expected = Record<string, string | number | null>
 type Patch =
   | { op: 'update'; fields: EditableFields; expected?: Expected }
   | { op: 'move'; parentId: string }
+  | { op: 'reorder'; beforeId: string | null; sortOrder: number }
   | { op: 'archive'; reason?: string }
   | { op: 'restore' }
 
@@ -108,6 +109,8 @@ export function useWorkspace(workspaceId: string, fallbackData?: WorkspaceState)
             return { ...n, ...patch.fields, updatedAt: now }
           case 'move':
             return { ...n, parentId: patch.parentId, updatedAt: now }
+          case 'reorder':
+            return { ...n, sortOrder: patch.sortOrder, updatedAt: now }
           case 'archive':
             return { ...n, archivedAt: now, archiveReason: patch.reason ?? null }
           case 'restore':

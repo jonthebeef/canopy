@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { schema } from '@/lib/db'
 import type { AuditChanges } from '@/lib/db/schema'
+import { sortOrderBefore } from '@/lib/tree-order'
 import {
   ALLOWED_CHILDREN,
   EFFORT_MIN,
@@ -51,6 +52,7 @@ export const patchNodeSchema = z.discriminatedUnion('op', [
     expected: z.record(z.string(), z.union([z.string(), z.number(), z.null()])).optional(),
   }),
   z.object({ op: z.literal('move'), parentId: z.string().min(1) }),
+  z.object({ op: z.literal('reorder'), beforeId: z.string().min(1).nullable() }),
   z.object({ op: z.literal('archive'), reason: z.string().trim().max(500).optional() }),
   z.object({ op: z.literal('restore') }),
 ])
@@ -194,6 +196,55 @@ export async function patchNode(
         action: 'move',
         summary: `Moved "${current.title}" from "${fromTitle ?? '—'}" to "${target.title}"`,
         changes: { parent: { from: fromTitle, to: target.title } },
+      }),
+    ])
+    return toTreeNode(row)
+  }
+
+  if (input.op === 'reorder') {
+    if (!current.parentId) throw new HttpError(400, 'The goal is the root of the tree')
+    if (input.beforeId === current.id) {
+      throw new HttpError(400, 'A card cannot be ordered relative to itself')
+    }
+    const siblings = await db
+      .select({
+        id: schema.node.id,
+        sortOrder: schema.node.sortOrder,
+        createdAt: schema.node.createdAt,
+      })
+      .from(schema.node)
+      .where(
+        and(
+          eq(schema.node.workspaceId, workspaceId),
+          eq(schema.node.parentId, current.parentId),
+        ),
+      )
+    if (input.beforeId && !siblings.some((sibling) => sibling.id === input.beforeId)) {
+      throw new HttpError(400, 'Cards can only be reordered alongside their siblings')
+    }
+    const sortOrder = sortOrderBefore(
+      siblings.map((sibling) => ({
+        ...sibling,
+        createdAt: sibling.createdAt.getTime(),
+      })),
+      current.id,
+      input.beforeId,
+    )
+    if (sortOrder === current.sortOrder) return toTreeNode(current)
+
+    const [[row]] = await db.batch([
+      db
+        .update(schema.node)
+        .set({ sortOrder, updatedBy: user.id, updatedAt: new Date() })
+        .where(eq(schema.node.id, nodeId))
+        .returning(),
+      auditInsert(db, {
+        workspaceId,
+        nodeId,
+        actorId: user.id,
+        action: 'move',
+        summary: `Reordered "${current.title}"`,
+        changes: { sortOrder: { from: current.sortOrder, to: sortOrder } },
       }),
     ])
     return toTreeNode(row)
