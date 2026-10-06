@@ -9,18 +9,8 @@ export type AuthEnv = {
   CANOPY_PREVIEW?: string
 }
 
-export function getAuth(env: AuthEnv, request: Request) {
-  if (!env.BETTER_AUTH_SECRET) {
-    throw new Error('Missing BETTER_AUTH_SECRET. Add it with `wrangler secret put BETTER_AUTH_SECRET`.')
-  }
-  const requestOrigin = new URL(request.url).origin
-  const isLocal = new URL(request.url).hostname === 'localhost'
-  const isPreview = env.CANOPY_PREVIEW === 'true'
-  if (!isLocal && !isPreview && !env.BETTER_AUTH_URL) {
-    throw new Error('Missing BETTER_AUTH_URL. Set it to the deployed Worker origin.')
-  }
+function createAuth(env: AuthEnv, baseURL: string, isLocal: boolean) {
   const db = getDb(env.DB)
-  const baseURL = isLocal || isPreview ? requestOrigin : env.BETTER_AUTH_URL!
   return betterAuth({
     database: drizzleAdapter(db, {
       provider: 'sqlite',
@@ -58,4 +48,26 @@ export function getAuth(env: AuthEnv, request: Request) {
       ipAddress: { ipAddressHeaders: ['cf-connecting-ip'] },
     },
   })
+}
+
+type CanopyAuth = ReturnType<typeof createAuth>
+let cached: { key: string; auth: CanopyAuth } | undefined
+
+export function getAuth(env: AuthEnv, request: Request): CanopyAuth {
+  if (!env.BETTER_AUTH_SECRET) {
+    throw new Error('Missing BETTER_AUTH_SECRET. Add it with `wrangler secret put BETTER_AUTH_SECRET`.')
+  }
+  const url = new URL(request.url)
+  const requestOrigin = url.origin
+  const isLocal = url.hostname === 'localhost'
+  const isPreview = env.CANOPY_PREVIEW === 'true'
+  if (!isLocal && !isPreview && !env.BETTER_AUTH_URL) {
+    throw new Error('Missing BETTER_AUTH_URL. Set it to the deployed Worker origin.')
+  }
+  const baseURL = isLocal || isPreview ? requestOrigin : env.BETTER_AUTH_URL!
+  const key = `${baseURL}:${env.BETTER_AUTH_SECRET}`
+  if (cached?.key === key) return cached.auth
+  const auth = createAuth(env, baseURL, isLocal)
+  cached = { key, auth }
+  return auth
 }
