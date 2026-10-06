@@ -114,7 +114,7 @@ export function TableView() {
           <option value="all">All types</option>
           {NODE_TYPES.map((t) => (
             <option key={t} value={t}>
-              {TYPE_LABEL[t]}s
+              {t === 'question' ? TYPE_LABEL[t] : `${TYPE_LABEL[t]}s`}
             </option>
           ))}
         </NativeSelect>

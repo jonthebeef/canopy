@@ -1,6 +1,7 @@
 export const NODE_TYPES = [
   'goal',
   'outcome',
+  'question',
   'opportunity',
   'solution',
   'experiment',
@@ -19,6 +20,7 @@ export type NodeStatus = (typeof NODE_STATUSES)[number]
 export const TYPE_LABEL: Record<NodeType, string> = {
   goal: 'Goal',
   outcome: 'Outcome',
+  question: 'How might we',
   opportunity: 'Opportunity',
   solution: 'Solution',
   experiment: 'Experiment',
@@ -35,9 +37,10 @@ export const STATUS_LABEL: Record<NodeStatus, string> = {
 /** Which node types may sit directly under each parent type. */
 export const ALLOWED_CHILDREN: Record<NodeType, NodeType[]> = {
   goal: ['outcome'],
-  outcome: ['opportunity'],
-  opportunity: ['opportunity', 'solution'],
-  solution: ['experiment'],
+  outcome: ['question', 'opportunity'],
+  question: ['question', 'opportunity', 'solution', 'experiment'],
+  opportunity: ['question', 'opportunity', 'solution'],
+  solution: ['question', 'experiment'],
   experiment: [],
 }
 

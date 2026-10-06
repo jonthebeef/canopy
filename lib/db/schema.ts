@@ -130,7 +130,7 @@ export const node = sqliteTable(
       .references(() => workspace.id, { onDelete: 'cascade' }),
     parentId: text('parent_id'),
     type: text('type', {
-      enum: ['goal', 'outcome', 'opportunity', 'solution', 'experiment'],
+      enum: ['goal', 'outcome', 'question', 'opportunity', 'solution', 'experiment'],
     }).notNull(),
     title: text('title').notNull(),
     description: text('description').notNull().default(''),

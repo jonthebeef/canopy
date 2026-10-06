@@ -20,6 +20,7 @@ import {
 export const TYPE_STYLE: Record<NodeType, string> = {
   goal: 'bg-foreground text-background',
   outcome: 'bg-primary text-primary-foreground',
+  question: 'bg-sky-100 text-sky-900',
   opportunity: 'bg-secondary text-secondary-foreground',
   solution: 'bg-score/25 text-score-foreground',
   experiment: 'bg-muted text-muted-foreground',

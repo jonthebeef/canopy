@@ -21,6 +21,7 @@ import { TypeTag } from './primitives'
 const PLACEHOLDER: Record<NodeType, string> = {
   goal: '',
   outcome: 'Increase weekly active buyers by 10%',
+  question: 'How might we make returning to a previous purchase effortless?',
   opportunity: "I can't find items I bought before",
   solution: 'One-tap "buy again" shelf on the home screen',
   experiment: 'Fake-door test of the shelf with 5% of users',
