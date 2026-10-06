@@ -22,9 +22,14 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
     cache: 'no-store',
   })
   const body = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error((body as { error?: string }).error ?? 'Request failed')
+  if (!res.ok) {
+    const message = (body as { error?: string }).error ?? 'Request failed'
+    throw res.status === 409 ? new ConflictError(message) : new Error(message)
+  }
   return body as T
 }
+
+class ConflictError extends Error {}
 
 export type EditableFields = Partial<{
   title: string
@@ -49,15 +54,17 @@ type EvidencePatch =
   | { op: 'archive' }
   | { op: 'restore' }
 
+type Expected = Record<string, string | number | null>
+
 type Patch =
-  | { op: 'update'; fields: EditableFields }
+  | { op: 'update'; fields: EditableFields; expected?: Expected }
   | { op: 'move'; parentId: string }
   | { op: 'archive'; reason?: string }
   | { op: 'restore' }
 
 export function useWorkspace(workspaceId: string, fallbackData?: WorkspaceState) {
   const key = `/api/w/${workspaceId}/state`
-  const { mutate: globalMutate } = useSWRConfig()
+  const { mutate: globalMutate, cache } = useSWRConfig()
   const swr = useSWR<WorkspaceState>(key, (url: string) => fetchJson<WorkspaceState>(url), {
     fallbackData,
     refreshInterval: LIVE_SYNC_MS,
@@ -87,6 +94,10 @@ export function useWorkspace(workspaceId: string, fallbackData?: WorkspaceState)
   // Overlapping optimistic mutations can resolve out of order and briefly clobber
   // each other's fields, so writes from this client are applied one at a time.
   const queue = useRef<Promise<unknown>>(Promise.resolve())
+
+  // Values this client has queued but not yet saved, so its own back-to-back
+  // edits aren't mistaken for someone else's change.
+  const pendingValues = useRef(new Map<string, unknown>())
 
   const patchNodeNow = useCallback(
     async (nodeId: string, patch: Patch) => {
@@ -122,7 +133,15 @@ export function useWorkspace(workspaceId: string, fallbackData?: WorkspaceState)
         return true
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Could not save change')
+        if (error instanceof ConflictError) mutate()
         return false
+      } finally {
+        if (patch.op === 'update') {
+          for (const key of Object.keys(patch.fields)) {
+            const k = `${nodeId}:${key}`
+            if (pendingValues.current.get(k) === (patch.fields as Expected)[key]) pendingValues.current.delete(k)
+          }
+        }
       }
     },
     [applyLocal, mutate, refreshActivity, workspaceId],
@@ -130,11 +149,30 @@ export function useWorkspace(workspaceId: string, fallbackData?: WorkspaceState)
 
   const patchNode = useCallback(
     (nodeId: string, patch: Patch) => {
-      const run = queue.current.then(() => patchNodeNow(nodeId, patch))
+      let toSend = patch
+      if (patch.op === 'update') {
+        // Snapshot what the user was looking at when they made the edit; the
+        // server rejects the write with 409 if the stored value has moved on.
+        const seen = cache.get(key)?.data as WorkspaceState | undefined
+        const node = seen?.nodes.find((n) => n.id === nodeId)
+        if (node) {
+          const expected: Expected = {}
+          for (const field of Object.keys(patch.fields)) {
+            const k = `${nodeId}:${field}`
+            const value = pendingValues.current.has(k)
+              ? pendingValues.current.get(k)
+              : (node as unknown as Record<string, unknown>)[field]
+            expected[field] = (value ?? null) as string | number | null
+            pendingValues.current.set(k, (patch.fields as Expected)[field])
+          }
+          toSend = { ...patch, expected }
+        }
+      }
+      const run = queue.current.then(() => patchNodeNow(nodeId, toSend))
       queue.current = run.catch(() => undefined)
       return run
     },
-    [patchNodeNow],
+    [cache, key, patchNodeNow],
   )
 
   const createNode = useCallback(

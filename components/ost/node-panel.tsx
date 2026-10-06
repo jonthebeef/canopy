@@ -19,6 +19,7 @@ import {
   isEffectivelyArchived,
   NODE_STATUSES,
   RICE_FIELDS,
+  outOfScaleRice,
   riceScore,
   STATUS_LABEL,
   TYPE_LABEL,
@@ -62,6 +63,7 @@ function NodeDetails({ node }: { node: TreeNode }) {
   const hiddenByAncestor = !node.archivedAt && isEffectivelyArchived(node.id, byId)
   const path = ancestry(node.id, byId)
   const score = riceScore(node)
+  const outOfScale = outOfScaleRice(node)
   const parents = validNewParents(node, state.nodes)
   const childTypes = canAddChild(node.type, isAdmin)
   const update = (fields: Parameters<typeof patchNode>[1] & { op: 'update' }) => patchNode(node.id, fields)
@@ -143,9 +145,20 @@ function NodeDetails({ node }: { node: TreeNode }) {
           {score != null ? (
             <ScoreChip score={score} />
           ) : (
-            <span className="text-xs text-muted-foreground">Fill all four to score</span>
+            <span className="text-xs text-muted-foreground">
+              {outOfScale.length > 0 ? 'Needs re-scoring' : 'Fill all four to score'}
+            </span>
           )}
         </div>
+        {outOfScale.length > 0 && (
+          <p role="status" className="rounded-md bg-muted px-2.5 py-2 text-xs leading-relaxed text-foreground">
+            {outOfScale
+              .map((k) => RICE_FIELDS.find((f) => f.key === k)!.label)
+              .join(', ')}{' '}
+            {outOfScale.length === 1 ? 'was' : 'were'} scored on the old scale. Re-enter{' '}
+            {outOfScale.length === 1 ? 'it' : 'them'} on the 0–10 scale to include this item in the RICE ranking.
+          </p>
+        )}
         <div className="grid grid-cols-2 gap-3">
           {RICE_FIELDS.map(({ key, label, hint }) => (
             <RiceField key={key} label={label} hint={hint}>

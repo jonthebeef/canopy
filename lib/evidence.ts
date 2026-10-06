@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { schema } from '@/lib/db'
 import type { AuditChanges } from '@/lib/db/schema'
 import { EVIDENCE_KINDS, EVIDENCE_LABEL } from '@/lib/ost'
-import { HttpError, newId, recordAudit, requireMember, toEvidence } from '@/lib/workspace'
+import { HttpError, auditInsert, newId, requireMember, toEvidence } from '@/lib/workspace'
 
 const evidenceFields = {
   kind: z.enum(EVIDENCE_KINDS),
@@ -40,29 +40,30 @@ export async function createEvidence(workspaceId: string, input: z.infer<typeof 
   })
   if (!parent) throw new HttpError(404, 'Item not found')
 
-  const [row] = await db
-    .insert(schema.evidence)
-    .values({
-      id: newId(),
+  const [[row]] = await db.batch([
+    db
+      .insert(schema.evidence)
+      .values({
+        id: newId(),
+        workspaceId,
+        nodeId: parent.id,
+        kind: input.kind,
+        summary: input.summary,
+        value: input.value ?? '',
+        detail: input.detail ?? '',
+        source: input.source ?? '',
+        createdBy: user.id,
+        updatedBy: user.id,
+      })
+      .returning(),
+    auditInsert(db, {
       workspaceId,
       nodeId: parent.id,
-      kind: input.kind,
-      summary: input.summary,
-      value: input.value ?? '',
-      detail: input.detail ?? '',
-      source: input.source ?? '',
-      createdBy: user.id,
-      updatedBy: user.id,
-    })
-    .returning()
-
-  await recordAudit(db, {
-    workspaceId,
-    nodeId: parent.id,
-    actorId: user.id,
-    action: 'create',
-    summary: `Added ${label(row.kind)} "${row.summary}" to "${parent.title}"`,
-  })
+      actorId: user.id,
+      action: 'create',
+      summary: `Added ${label(input.kind)} "${input.summary}" to "${parent.title}"`,
+    }),
+  ])
   return toEvidence(row)
 }
 
@@ -86,39 +87,45 @@ export async function patchEvidence(
       ;(set as Record<string, unknown>)[key] = value
     }
     if (Object.keys(set).length === 0) return toEvidence(current)
-    const [row] = await db
-      .update(schema.evidence)
-      .set({ ...set, updatedBy: user.id, updatedAt: new Date() })
-      .where(eq(schema.evidence.id, evidenceId))
-      .returning()
-    await recordAudit(db, {
-      workspaceId,
-      nodeId: current.nodeId,
-      actorId: user.id,
-      action: 'update',
-      summary: `Edited ${label(row.kind)} "${row.summary}"`,
-      changes,
-    })
+    const kind = set.kind ?? current.kind
+    const summary = set.summary ?? current.summary
+    const [[row]] = await db.batch([
+      db
+        .update(schema.evidence)
+        .set({ ...set, updatedBy: user.id, updatedAt: new Date() })
+        .where(eq(schema.evidence.id, evidenceId))
+        .returning(),
+      auditInsert(db, {
+        workspaceId,
+        nodeId: current.nodeId,
+        actorId: user.id,
+        action: 'update',
+        summary: `Edited ${label(kind)} "${summary}"`,
+        changes,
+      }),
+    ])
     return toEvidence(row)
   }
 
   const archiving = input.op === 'archive'
   if (archiving === Boolean(current.archivedAt)) return toEvidence(current)
-  const [row] = await db
-    .update(schema.evidence)
-    .set(
-      archiving
-        ? { archivedAt: new Date(), archivedBy: user.id }
-        : { archivedAt: null, archivedBy: null, updatedBy: user.id, updatedAt: new Date() },
-    )
-    .where(eq(schema.evidence.id, evidenceId))
-    .returning()
-  await recordAudit(db, {
-    workspaceId,
-    nodeId: current.nodeId,
-    actorId: user.id,
-    action: archiving ? 'archive' : 'restore',
-    summary: `${archiving ? 'Archived' : 'Restored'} ${label(row.kind)} "${row.summary}"`,
-  })
+  const [[row]] = await db.batch([
+    db
+      .update(schema.evidence)
+      .set(
+        archiving
+          ? { archivedAt: new Date(), archivedBy: user.id }
+          : { archivedAt: null, archivedBy: null, updatedBy: user.id, updatedAt: new Date() },
+      )
+      .where(eq(schema.evidence.id, evidenceId))
+      .returning(),
+    auditInsert(db, {
+      workspaceId,
+      nodeId: current.nodeId,
+      actorId: user.id,
+      action: archiving ? 'archive' : 'restore',
+      summary: `${archiving ? 'Archived' : 'Restored'} ${label(current.kind)} "${current.summary}"`,
+    }),
+  ])
   return toEvidence(row)
 }

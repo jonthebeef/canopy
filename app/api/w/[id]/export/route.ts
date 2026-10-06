@@ -1,7 +1,15 @@
 import { NextResponse } from 'next/server'
 import { eq } from 'drizzle-orm'
 import { schema } from '@/lib/db'
-import { EVIDENCE_LABEL, STATUS_LABEL, TYPE_LABEL, ancestry, riceScore, type EvidenceKind } from '@/lib/ost'
+import {
+  EVIDENCE_LABEL,
+  STATUS_LABEL,
+  TYPE_LABEL,
+  ancestry,
+  isEffectivelyArchived,
+  riceScore,
+  type EvidenceKind,
+} from '@/lib/ost'
 import { HttpError, requireMember, toTreeNode } from '@/lib/workspace'
 
 function csvCell(value: unknown) {
@@ -44,7 +52,7 @@ export async function GET(req: Request, ctx: RouteContext<'/api/w/[id]/export'>)
       'Updated by', 'Updated at', 'Archived at', 'Archive reason',
     ]
     const lines = nodes
-      .filter((n) => includeArchived || !n.archivedAt)
+      .filter((n) => includeArchived || !isEffectivelyArchived(n.id, byId))
       .map((n) => {
         const path = ancestry(n.id, byId).map((a) => a.title).join(' › ')
         const score = riceScore(n)

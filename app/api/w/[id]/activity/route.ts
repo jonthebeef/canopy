@@ -8,7 +8,8 @@ export async function GET(req: Request, ctx: RouteContext<'/api/w/[id]/activity'
   const { id } = await ctx.params
   const url = new URL(req.url)
   const nodeId = url.searchParams.get('nodeId')
-  const limit = Math.min(Number(url.searchParams.get('limit')) || 100, 500)
+  const requested = Math.trunc(Number(url.searchParams.get('limit')))
+  const limit = Number.isFinite(requested) && requested > 0 ? Math.min(requested, 500) : 100
 
   return handle(async (): Promise<ActivityEvent[]> => {
     const { db } = await requireMember(id)

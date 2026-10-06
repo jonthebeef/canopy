@@ -212,6 +212,18 @@ function InviteSection() {
   const [copied, setCopied] = useState(false)
   const [pending, startTransition] = useTransition()
 
+  if (!isAdmin || !state.workspace.inviteCode) {
+    return (
+      <Section
+        id="invite"
+        title="Invite your trio"
+        description="Only admins can share the invite link. Ask your PM to send it to new teammates."
+      >
+        {null}
+      </Section>
+    )
+  }
+
   return (
     <Section
       id="invite"
@@ -238,7 +250,11 @@ function InviteSection() {
               disabled={pending}
               onClick={() =>
                 startTransition(async () => {
-                  await regenerateInvite(state.workspace.id)
+                  const res = await regenerateInvite(state.workspace.id)
+                  if (res?.error) {
+                    toast.error(res.error)
+                    return
+                  }
                   await mutate()
                   toast.success('New invite link created', { description: 'The old link no longer works.' })
                 })
@@ -287,8 +303,13 @@ function MembersSection() {
                   const role = e.target.value as 'admin' | 'member'
                   startTransition(async () => {
                     try {
-                      await setMemberRole(state.workspace.id, m.userId, role)
+                      const res = await setMemberRole(state.workspace.id, m.userId, role)
+                      if (res?.error) {
+                        toast.error(res.error)
+                        return
+                      }
                       await mutate()
+                      toast.success(`${m.name} is now ${role === 'admin' ? 'an admin' : 'a contributor'}`)
                     } catch {
                       toast.error('Could not change role')
                     }

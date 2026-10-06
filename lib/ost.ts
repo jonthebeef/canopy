@@ -117,7 +117,8 @@ export type WorkspaceState = {
     id: string
     name: string
     product: string
-    inviteCode: string
+    /** Only sent to admins; contributors can't see or share the invite link. */
+    inviteCode: string | null
   }
   me: { id: string; role: 'admin' | 'member' }
   members: Member[]
@@ -138,11 +139,26 @@ export type ActivityEvent = {
   createdAt: number
 }
 
-/** RICE = Reach × Impact × Confidence(%) ÷ Effort. Null until all four are set. */
+/**
+ * RICE inputs saved before the 0–10 scale (e.g. Reach 2000) would dominate any
+ * ranking, so they're flagged for re-scoring instead of being counted.
+ */
+export function outOfScaleRice(n: Pick<TreeNode, RiceKey>): RiceKey[] {
+  const bad: RiceKey[] = []
+  for (const key of ['reach', 'impact', 'effort'] as const) {
+    const v = n[key]
+    if (v != null && (v < 0 || v > RICE_MAX)) bad.push(key)
+  }
+  if (n.confidence != null && (n.confidence < 0 || n.confidence > 100)) bad.push('confidence')
+  return bad
+}
+
+/** RICE = Reach × Impact × Confidence(%) ÷ Effort. Null until all four are set and in scale. */
 export function riceScore(n: Pick<TreeNode, 'reach' | 'impact' | 'confidence' | 'effort'>) {
   const { reach, impact, confidence, effort } = n
   if (reach == null || impact == null || confidence == null || effort == null) return null
   if (effort <= 0) return null
+  if (outOfScaleRice(n).length > 0) return null
   return (reach * impact * (confidence / 100)) / effort
 }
 

@@ -19,7 +19,20 @@ async function requestOrigin() {
   return [`${proto}://${host}`]
 }
 
+// Fail loudly instead of running production with a default secret or an empty
+// trusted-origin list (which shows up as a confusing "Invalid origin" on sign-in).
+function assertProductionConfig() {
+  if (process.env.NODE_ENV !== 'production') return
+  const missing = ['BETTER_AUTH_SECRET', 'BETTER_AUTH_URL'].filter((k) => !process.env[k])
+  if (missing.length) {
+    throw new Error(
+      `Missing ${missing.join(' and ')}. Set them on the Cloudflare Worker (wrangler secret put / dashboard) before deploying.`,
+    )
+  }
+}
+
 export async function getAuth() {
+  assertProductionConfig()
   const db = await getDb()
   const devOrigins = process.env.NODE_ENV === 'development' ? await requestOrigin() : []
   return betterAuth({
@@ -30,8 +43,21 @@ export async function getAuth() {
         session: schema.session,
         account: schema.account,
         verification: schema.verification,
+        rateLimit: schema.rateLimit,
       },
     }),
+    // In-memory limits reset per Worker isolate, so keep counters in D1.
+    rateLimit: {
+      enabled: process.env.NODE_ENV === 'production',
+      storage: 'database',
+      modelName: 'rateLimit',
+      window: 60,
+      max: 100,
+      customRules: {
+        '/sign-in/email': { window: 60, max: 5 },
+        '/sign-up/email': { window: 60, max: 3 },
+      },
+    },
     baseURL:
       process.env.BETTER_AUTH_URL ??
       (process.env.VERCEL_PROJECT_PRODUCTION_URL
@@ -81,7 +107,12 @@ export async function getAuth() {
             },
           },
         }
-      : {}),
+      : {
+          advanced: {
+            // Cloudflare sets this to the real client IP; rate limits key off it.
+            ipAddress: { ipAddressHeaders: ['cf-connecting-ip'] },
+          },
+        }),
   })
 }
 

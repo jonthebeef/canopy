@@ -81,7 +81,7 @@ function EvidenceCard({ evidence }: { evidence: Evidence }) {
     return <EvidenceForm nodeId={evidence.nodeId} existing={evidence} onDone={() => setEditing(false)} />
   }
 
-  const link = /^https?:\/\//i.test(evidence.source) ? evidence.source : null
+  const link = parseLink(evidence.source)
 
   return (
     <article
@@ -128,13 +128,13 @@ function EvidenceCard({ evidence }: { evidence: Evidence }) {
         {evidence.source &&
           (link ? (
             <a
-              href={link}
+              href={link.href}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex max-w-full items-center gap-1 truncate underline-offset-2 hover:text-foreground hover:underline"
             >
               <ExternalLink className="size-3 shrink-0" aria-hidden="true" />
-              <span className="truncate">{new URL(link).hostname}</span>
+              <span className="truncate">{link.hostname}</span>
             </a>
           ) : (
             <span className="truncate">{evidence.source}</span>
@@ -279,4 +279,15 @@ function EvidenceForm({
       </div>
     </form>
   )
+}
+
+/** Returns a URL only for well-formed http(s) links; anything else renders as plain text. */
+function parseLink(source: string) {
+  if (!/^https?:\/\//i.test(source)) return null
+  try {
+    const url = new URL(source)
+    return url.hostname ? url : null
+  } catch {
+    return null
+  }
 }

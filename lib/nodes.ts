@@ -13,7 +13,7 @@ import {
   TYPE_LABEL,
   type NodeType,
 } from '@/lib/ost'
-import { HttpError, newId, recordAudit, requireMember, toTreeNode } from '@/lib/workspace'
+import { HttpError, auditInsert, newId, requireMember, toTreeNode } from '@/lib/workspace'
 
 const ADMIN_ONLY_TYPES: NodeType[] = ['goal', 'outcome']
 
@@ -46,6 +46,9 @@ export const patchNodeSchema = z.discriminatedUnion('op', [
   z.object({
     op: z.literal('update'),
     fields: z.object(editableFields).partial(),
+    // The values the client last saw for the fields it is changing. If the stored
+    // value differs, someone else edited it in the meantime and we refuse to overwrite.
+    expected: z.record(z.string(), z.union([z.string(), z.number(), z.null()])).optional(),
   }),
   z.object({ op: z.literal('move'), parentId: z.string().min(1) }),
   z.object({ op: z.literal('archive'), reason: z.string().trim().max(500).optional() }),
@@ -53,15 +56,6 @@ export const patchNodeSchema = z.discriminatedUnion('op', [
 ])
 
 type FieldName = keyof typeof editableFields
-const FIELD_LABEL: Record<FieldName, string> = {
-  title: 'title',
-  description: 'description',
-  status: 'status',
-  reach: 'reach',
-  impact: 'impact',
-  confidence: 'confidence',
-  effort: 'effort',
-}
 
 function assertCanEdit(role: 'admin' | 'member', type: NodeType) {
   if (role !== 'admin' && ADMIN_ONLY_TYPES.includes(type)) {
@@ -94,28 +88,29 @@ export async function createNode(workspaceId: string, input: z.infer<typeof crea
   }
 
   const id = newId()
-  const [row] = await db
-    .insert(schema.node)
-    .values({
-      id,
+  const [[row]] = await db.batch([
+    db
+      .insert(schema.node)
+      .values({
+        id,
+        workspaceId,
+        parentId: parent.id,
+        type: input.type,
+        title: input.title,
+        description: input.description ?? '',
+        sortOrder: Date.now(),
+        createdBy: user.id,
+        updatedBy: user.id,
+      })
+      .returning(),
+    auditInsert(db, {
       workspaceId,
-      parentId: parent.id,
-      type: input.type,
-      title: input.title,
-      description: input.description ?? '',
-      sortOrder: Date.now(),
-      createdBy: user.id,
-      updatedBy: user.id,
-    })
-    .returning()
-
-  await recordAudit(db, {
-    workspaceId,
-    nodeId: id,
-    actorId: user.id,
-    action: 'create',
-    summary: `Added ${TYPE_LABEL[input.type].toLowerCase()} "${input.title}" under "${parent.title}"`,
-  })
+      nodeId: id,
+      actorId: user.id,
+      action: 'create',
+      summary: `Added ${TYPE_LABEL[input.type].toLowerCase()} "${input.title}" under "${parent.title}"`,
+    }),
+  ])
   return toTreeNode(row)
 }
 
@@ -134,23 +129,32 @@ export async function patchNode(
     for (const [key, value] of Object.entries(input.fields) as [FieldName, unknown][]) {
       if (value === undefined) continue
       if (current[key] === value) continue
+      if (input.expected && key in input.expected && input.expected[key] !== current[key]) {
+        throw new HttpError(
+          409,
+          `Someone else changed the ${key} on "${current.title}" while you were editing. Showing their version — re-apply your change if it still applies.`,
+        )
+      }
       changes[key] = { from: current[key], to: value }
       ;(set as Record<string, unknown>)[key] = value
     }
     if (Object.keys(set).length === 0) return toTreeNode(current)
 
-    const [row] = await db
-      .update(schema.node)
-      .set({ ...set, updatedBy: user.id, updatedAt: new Date() })
-      .where(eq(schema.node.id, nodeId))
-      .returning()
-
     const keys = Object.keys(changes) as FieldName[]
+    const title = (set.title as string | undefined) ?? current.title
     const summary =
       keys.length === 1 && keys[0] === 'status'
-        ? `Set "${row.title}" to ${STATUS_LABEL[row.status]}`
-        : `Changed ${keys.map((k) => FIELD_LABEL[k]).join(', ')} on "${row.title}"`
-    await recordAudit(db, { workspaceId, nodeId, actorId: user.id, action: 'update', summary, changes })
+        ? `Set "${title}" to ${STATUS_LABEL[set.status!]}`
+        : `Changed ${keys.join(', ')} on "${title}"`
+
+    const [[row]] = await db.batch([
+      db
+        .update(schema.node)
+        .set({ ...set, updatedBy: user.id, updatedAt: new Date() })
+        .where(eq(schema.node.id, nodeId))
+        .returning(),
+      auditInsert(db, { workspaceId, nodeId, actorId: user.id, action: 'update', summary, changes }),
+    ])
     return toTreeNode(row)
   }
 
@@ -166,32 +170,32 @@ export async function patchNode(
     }
     // Reject moves that would put a node underneath its own descendant.
     const all = await db
-      .select({ id: schema.node.id, parentId: schema.node.parentId })
+      .select({ id: schema.node.id, parentId: schema.node.parentId, title: schema.node.title })
       .from(schema.node)
       .where(eq(schema.node.workspaceId, workspaceId))
-    const parentOf = new Map(all.map((n) => [n.id, n.parentId]))
+    const byId = new Map(all.map((n) => [n.id, n]))
     let cursor: string | null | undefined = target.id
     while (cursor) {
       if (cursor === nodeId) throw new HttpError(400, "Can't move an item underneath itself")
-      cursor = parentOf.get(cursor)
+      cursor = byId.get(cursor)?.parentId
     }
-    const fromParent = current.parentId
-      ? await db.query.node.findFirst({ where: eq(schema.node.id, current.parentId) })
-      : null
+    const fromTitle = current.parentId ? (byId.get(current.parentId)?.title ?? null) : null
 
-    const [row] = await db
-      .update(schema.node)
-      .set({ parentId: target.id, sortOrder: Date.now(), updatedBy: user.id, updatedAt: new Date() })
-      .where(eq(schema.node.id, nodeId))
-      .returning()
-    await recordAudit(db, {
-      workspaceId,
-      nodeId,
-      actorId: user.id,
-      action: 'move',
-      summary: `Moved "${row.title}" from "${fromParent?.title ?? '—'}" to "${target.title}"`,
-      changes: { parent: { from: fromParent?.title ?? null, to: target.title } },
-    })
+    const [[row]] = await db.batch([
+      db
+        .update(schema.node)
+        .set({ parentId: target.id, sortOrder: Date.now(), updatedBy: user.id, updatedAt: new Date() })
+        .where(eq(schema.node.id, nodeId))
+        .returning(),
+      auditInsert(db, {
+        workspaceId,
+        nodeId,
+        actorId: user.id,
+        action: 'move',
+        summary: `Moved "${current.title}" from "${fromTitle ?? '—'}" to "${target.title}"`,
+        changes: { parent: { from: fromTitle, to: target.title } },
+      }),
+    ])
     return toTreeNode(row)
   }
 
@@ -199,37 +203,39 @@ export async function patchNode(
     if (current.type === 'goal') throw new HttpError(400, "The goal can't be archived")
     if (current.archivedAt) return toTreeNode(current)
     const reason = input.reason || null
-    const [row] = await db
-      .update(schema.node)
-      .set({ archivedAt: new Date(), archivedBy: user.id, archiveReason: reason })
-      .where(eq(schema.node.id, nodeId))
-      .returning()
-    await recordAudit(db, {
-      workspaceId,
-      nodeId,
-      actorId: user.id,
-      action: 'archive',
-      summary: `Archived ${TYPE_LABEL[row.type].toLowerCase()} "${row.title}"`,
-      reason,
-    })
+    const [[row]] = await db.batch([
+      db
+        .update(schema.node)
+        .set({ archivedAt: new Date(), archivedBy: user.id, archiveReason: reason })
+        .where(eq(schema.node.id, nodeId))
+        .returning(),
+      auditInsert(db, {
+        workspaceId,
+        nodeId,
+        actorId: user.id,
+        action: 'archive',
+        summary: `Archived ${TYPE_LABEL[current.type].toLowerCase()} "${current.title}"`,
+        reason,
+      }),
+    ])
     return toTreeNode(row)
   }
 
   if (!current.archivedAt) return toTreeNode(current)
-  const [row] = await db
-    .update(schema.node)
-    .set({ archivedAt: null, archivedBy: null, archiveReason: null, updatedBy: user.id, updatedAt: new Date() })
-    .where(eq(schema.node.id, nodeId))
-    .returning()
-  await recordAudit(db, {
-    workspaceId,
-    nodeId,
-    actorId: user.id,
-    action: 'restore',
-    summary: `Restored ${TYPE_LABEL[row.type].toLowerCase()} "${row.title}"`,
-    changes: current.archiveReason
-      ? { archiveReason: { from: current.archiveReason, to: null } }
-      : null,
-  })
+  const [[row]] = await db.batch([
+    db
+      .update(schema.node)
+      .set({ archivedAt: null, archivedBy: null, archiveReason: null, updatedBy: user.id, updatedAt: new Date() })
+      .where(eq(schema.node.id, nodeId))
+      .returning(),
+    auditInsert(db, {
+      workspaceId,
+      nodeId,
+      actorId: user.id,
+      action: 'restore',
+      summary: `Restored ${TYPE_LABEL[current.type].toLowerCase()} "${current.title}"`,
+      changes: current.archiveReason ? { archiveReason: { from: current.archiveReason, to: null } } : null,
+    }),
+  ])
   return toTreeNode(row)
 }

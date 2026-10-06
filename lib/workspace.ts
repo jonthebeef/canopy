@@ -55,19 +55,23 @@ export function toEvidence(row: typeof schema.evidence.$inferSelect): Evidence {
   }
 }
 
-export async function recordAudit(
-  db: Db,
-  event: {
-    workspaceId: string
-    nodeId?: string | null
-    actorId: string
-    action: (typeof schema.auditEvent.$inferInsert)['action']
-    summary: string
-    changes?: AuditChanges | null
-    reason?: string | null
-  },
-) {
-  await db.insert(schema.auditEvent).values({
+export type AuditInput = {
+  workspaceId: string
+  nodeId?: string | null
+  actorId: string
+  action: (typeof schema.auditEvent.$inferInsert)['action']
+  summary: string
+  changes?: AuditChanges | null
+  reason?: string | null
+}
+
+/**
+ * Builds (without running) the audit insert so callers can put it in the same
+ * `db.batch([...])` as the change it describes. D1 runs a batch as one transaction,
+ * so a change can never land without its audit entry.
+ */
+export function auditInsert(db: Db, event: AuditInput) {
+  return db.insert(schema.auditEvent).values({
     workspaceId: event.workspaceId,
     nodeId: event.nodeId ?? null,
     actorId: event.actorId,
@@ -76,6 +80,11 @@ export async function recordAudit(
     changes: event.changes ?? null,
     reason: event.reason ?? null,
   })
+}
+
+/** For audit entries that aren't paired with another write. */
+export async function recordAudit(db: Db, event: AuditInput) {
+  await auditInsert(db, event)
 }
 
 const PRESENCE_WRITE_INTERVAL_MS = 8_000
@@ -118,7 +127,12 @@ export async function loadWorkspaceState(workspaceId: string): Promise<Workspace
   if (!ws) throw new HttpError(404, 'Workspace not found')
 
   return {
-    workspace: { id: ws.id, name: ws.name, product: ws.product, inviteCode: ws.inviteCode },
+    workspace: {
+      id: ws.id,
+      name: ws.name,
+      product: ws.product,
+      inviteCode: role === 'admin' ? ws.inviteCode : null,
+    },
     me: { id: user.id, role },
     members: members.map((m) => ({
       ...m,

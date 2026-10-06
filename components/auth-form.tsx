@@ -8,12 +8,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { signIn, signUp } from '@/lib/auth-client'
+import { safeNextPath } from '@/lib/safe-next'
 
 export function AuthForm({ mode, next }: { mode: 'sign-in' | 'sign-up'; next?: string }) {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
-  const destination = next && next.startsWith('/') && !next.startsWith('//') ? next : '/workspaces'
+  const destination = safeNextPath(next)
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()

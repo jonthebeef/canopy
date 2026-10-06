@@ -2,10 +2,11 @@ import { redirect } from 'next/navigation'
 import { AuthForm } from '@/components/auth-form'
 import { AuthShell } from '@/components/auth-shell'
 import { getSession } from '@/lib/auth'
+import { safeNextPath } from '@/lib/safe-next'
 
 export default async function SignUpPage({ searchParams }: PageProps<'/sign-up'>) {
   const { next } = await searchParams
-  const nextPath = typeof next === 'string' ? next : undefined
+  const nextPath = typeof next === 'string' ? safeNextPath(next) : undefined
   if ((await getSession())?.user) redirect(nextPath ?? '/workspaces')
   return (
     <AuthShell

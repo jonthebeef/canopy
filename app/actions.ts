@@ -8,9 +8,9 @@ import { getDb, schema } from '@/lib/db'
 import { getSession } from '@/lib/auth'
 import {
   HttpError,
+  auditInsert,
   newId,
   newInviteCode,
-  recordAudit,
   requireAdmin,
 } from '@/lib/workspace'
 
@@ -58,14 +58,14 @@ export async function createWorkspace(_prev: ActionState, formData: FormData): P
       createdBy: userId,
       updatedBy: userId,
     }),
+    auditInsert(db, {
+      workspaceId,
+      nodeId: goalId,
+      actorId: userId,
+      action: 'workspace',
+      summary: `Created workspace "${parsed.data.name}" with goal "${parsed.data.goal}"`,
+    }),
   ])
-  await recordAudit(db, {
-    workspaceId,
-    nodeId: goalId,
-    actorId: userId,
-    action: 'workspace',
-    summary: `Created workspace "${parsed.data.name}" with goal "${parsed.data.goal}"`,
-  })
   redirect(`/w/${workspaceId}/setup`)
 }
 
@@ -83,13 +83,15 @@ export async function joinWorkspace(_prev: ActionState, formData: FormData): Pro
     where: and(eq(schema.member.workspaceId, ws.id), eq(schema.member.userId, userId)),
   })
   if (!existing) {
-    await db.insert(schema.member).values({ workspaceId: ws.id, userId, role: 'member' })
-    await recordAudit(db, {
-      workspaceId: ws.id,
-      actorId: userId,
-      action: 'member',
-      summary: 'Joined the workspace',
-    })
+    await db.batch([
+      db.insert(schema.member).values({ workspaceId: ws.id, userId, role: 'member' }),
+      auditInsert(db, {
+        workspaceId: ws.id,
+        actorId: userId,
+        action: 'member',
+        summary: 'Joined the workspace',
+      }),
+    ])
   }
   redirect(`/w/${ws.id}`)
 }
@@ -120,14 +122,16 @@ export async function updateWorkspace(
       changes.product = { from: current.product, to: parsed.data.product }
     if (Object.keys(changes).length === 0) return { ok: true }
 
-    await db.update(schema.workspace).set(parsed.data).where(eq(schema.workspace.id, workspaceId))
-    await recordAudit(db, {
-      workspaceId,
-      actorId: user.id,
-      action: 'workspace',
-      summary: `Updated workspace ${Object.keys(changes).join(' and ')}`,
-      changes,
-    })
+    await db.batch([
+      db.update(schema.workspace).set(parsed.data).where(eq(schema.workspace.id, workspaceId)),
+      auditInsert(db, {
+        workspaceId,
+        actorId: user.id,
+        action: 'workspace',
+        summary: `Updated workspace ${Object.keys(changes).join(' and ')}`,
+        changes,
+      }),
+    ])
     revalidatePath(`/w/${workspaceId}`, 'layout')
     return { ok: true }
   } catch (error) {
@@ -136,36 +140,75 @@ export async function updateWorkspace(
   }
 }
 
-export async function regenerateInvite(workspaceId: string) {
-  const { db, user } = await requireAdmin(workspaceId)
-  await db
-    .update(schema.workspace)
-    .set({ inviteCode: newInviteCode() })
-    .where(eq(schema.workspace.id, workspaceId))
-  await recordAudit(db, {
-    workspaceId,
-    actorId: user.id,
-    action: 'workspace',
-    summary: 'Reset the invite link (old links no longer work)',
-  })
-  revalidatePath(`/w/${workspaceId}/setup`)
+// Server actions return errors instead of throwing: in production Next.js replaces
+// thrown messages with a generic one, so the user would never see why it failed.
+async function asActionState(run: () => Promise<void>): Promise<ActionState> {
+  try {
+    await run()
+    return { ok: true }
+  } catch (error) {
+    if (error instanceof HttpError) return { error: error.message }
+    console.error('[actions] failed', error)
+    return { error: 'Something went wrong. Please try again.' }
+  }
 }
 
-export async function setMemberRole(workspaceId: string, userId: string, role: 'admin' | 'member') {
-  const { db, user } = await requireAdmin(workspaceId)
-  if (userId === user.id) throw new HttpError(400, "You can't change your own role")
-  const target = await db.query.user.findFirst({ where: eq(schema.user.id, userId) })
-  await db
-    .update(schema.member)
-    .set({ role })
-    .where(and(eq(schema.member.workspaceId, workspaceId), eq(schema.member.userId, userId)))
-  await recordAudit(db, {
-    workspaceId,
-    actorId: user.id,
-    action: 'member',
-    summary: `Made ${target?.name ?? 'a member'} ${role === 'admin' ? 'an admin' : 'a contributor'}`,
+export async function regenerateInvite(workspaceId: string): Promise<ActionState> {
+  return asActionState(async () => {
+    const { db, user } = await requireAdmin(workspaceId)
+    await db.batch([
+      db
+        .update(schema.workspace)
+        .set({ inviteCode: newInviteCode() })
+        .where(eq(schema.workspace.id, workspaceId)),
+      auditInsert(db, {
+        workspaceId,
+        actorId: user.id,
+        action: 'workspace',
+        summary: 'Reset the invite link (old links no longer work)',
+      }),
+    ])
+    revalidatePath(`/w/${workspaceId}/setup`)
   })
-  revalidatePath(`/w/${workspaceId}/setup`)
+}
+
+const roleSchema = z.object({
+  workspaceId: z.string().min(1),
+  userId: z.string().min(1),
+  role: z.enum(['admin', 'member']),
+})
+
+export async function setMemberRole(workspaceId: string, userId: string, role: 'admin' | 'member') {
+  return asActionState(async () => {
+    const parsed = roleSchema.safeParse({ workspaceId, userId, role })
+    if (!parsed.success) throw new HttpError(400, 'Invalid role change')
+    const input = parsed.data
+    const { db, user } = await requireAdmin(input.workspaceId)
+    if (input.userId === user.id) throw new HttpError(400, "You can't change your own role")
+
+    const [target] = await db
+      .select({ name: schema.user.name, role: schema.member.role })
+      .from(schema.member)
+      .innerJoin(schema.user, eq(schema.user.id, schema.member.userId))
+      .where(and(eq(schema.member.workspaceId, input.workspaceId), eq(schema.member.userId, input.userId)))
+      .limit(1)
+    if (!target) throw new HttpError(404, 'That person is not a member of this workspace')
+    if (target.role === input.role) return
+
+    await db.batch([
+      db
+        .update(schema.member)
+        .set({ role: input.role })
+        .where(and(eq(schema.member.workspaceId, input.workspaceId), eq(schema.member.userId, input.userId))),
+      auditInsert(db, {
+        workspaceId: input.workspaceId,
+        actorId: user.id,
+        action: 'member',
+        summary: `Made ${target.name} ${input.role === 'admin' ? 'an admin' : 'a contributor'}`,
+      }),
+    ])
+    revalidatePath(`/w/${input.workspaceId}/setup`)
+  })
 }
 
 export async function signOutRedirect() {
