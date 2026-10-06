@@ -74,16 +74,15 @@ function GuestPage({ children, destination = '/workspaces' }: { children: ReactN
 function HomePage() {
   useTitle('Canopy — Opportunity Solution Trees for product trios')
   return (
-    <GuestPage>
-      <div className="flex min-h-dvh flex-col">
-        <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5">
+    <div className="flex min-h-dvh flex-col">
+      <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5">
         <Brand />
         <nav className="flex items-center gap-2">
           <Button variant="ghost" nativeButton={false} render={<a href="/sign-in" />}>Sign in</Button>
           <Button nativeButton={false} render={<a href="/sign-up" />}>Get started</Button>
         </nav>
-        </header>
-        <main className="flex flex-1 flex-col">
+      </header>
+      <main className="flex flex-1 flex-col">
         <section className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 pt-16 pb-20 md:pt-24">
           <p className="font-mono text-xs uppercase tracking-widest text-primary">Opportunity Solution Trees</p>
           <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-balance md:text-6xl">Your discovery work, structured instead of stickied.</h1>
@@ -104,10 +103,9 @@ function HomePage() {
             ))}
           </ul>
         </section>
-        </main>
-        <footer className="mx-auto w-full max-w-6xl px-6 py-8 text-sm text-muted-foreground">Runs on Cloudflare Workers + D1.</footer>
-      </div>
-    </GuestPage>
+      </main>
+      <footer className="mx-auto w-full max-w-6xl px-6 py-8 text-sm text-muted-foreground">Runs on Cloudflare Workers + D1.</footer>
+    </div>
   )
 }
 
