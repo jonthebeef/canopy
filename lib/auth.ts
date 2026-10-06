@@ -32,7 +32,10 @@ function assertProductionConfig() {
 }
 
 export async function getAuth() {
-  assertProductionConfig()
+  // Reading request headers first opts callers out of static prerendering, so the
+  // config check runs per request on the deployed Worker, never during `next build`.
+  await headers()
+  if (process.env.NEXT_PHASE !== 'phase-production-build') assertProductionConfig()
   const db = await getDb()
   const devOrigins = process.env.NODE_ENV === 'development' ? await requestOrigin() : []
   return betterAuth({
