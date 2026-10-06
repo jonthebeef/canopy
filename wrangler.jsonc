@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "opportunity-tree",
+  "name": "opportunity-solution-tree-app",
   "main": ".open-next/worker.js",
   "minify": true,
   "compatibility_date": "2026-09-01",
@@ -12,7 +12,7 @@
   "services": [
     {
       "binding": "WORKER_SELF_REFERENCE",
-      "service": "opportunity-tree"
+      "service": "opportunity-solution-tree-app"
     }
   ],
   "d1_databases": [
