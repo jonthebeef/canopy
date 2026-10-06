@@ -1,8 +1,6 @@
-import 'server-only'
 import { and, desc, eq, sql } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
-import { getDb, schema, type Db } from '@/lib/db'
-import { getSession } from '@/lib/auth'
+import { schema, type Db } from '@/lib/db'
 import type { AuditChanges } from '@/lib/db/schema'
 import type { Evidence, TreeNode, WorkspaceState } from '@/lib/ost'
 
@@ -15,23 +13,26 @@ export class HttpError extends Error {
   }
 }
 
-/** Verifies the session user belongs to the workspace. Every workspace query goes through this. */
-export async function requireMember(workspaceId: string) {
-  const session = await getSession()
-  if (!session?.user) throw new HttpError(401, 'Not signed in')
-  const db = await getDb()
+export type RequestContext = {
+  db: Db
+  user: { id: string; name: string; email: string }
+}
+
+/** Verifies the request user belongs to the workspace. Every workspace query goes through this. */
+export async function requireMember(workspaceId: string, context: RequestContext) {
+  const { db, user } = context
   const membership = await db.query.member.findFirst({
     where: and(
       eq(schema.member.workspaceId, workspaceId),
-      eq(schema.member.userId, session.user.id),
+      eq(schema.member.userId, user.id),
     ),
   })
   if (!membership) throw new HttpError(404, 'Workspace not found')
-  return { db, user: session.user, role: membership.role, membership }
+  return { db, user, role: membership.role, membership }
 }
 
-export async function requireAdmin(workspaceId: string) {
-  const ctx = await requireMember(workspaceId)
+export async function requireAdmin(workspaceId: string, context: RequestContext) {
+  const ctx = await requireMember(workspaceId, context)
   if (ctx.role !== 'admin') throw new HttpError(403, 'Only workspace admins can do that')
   return ctx
 }
@@ -89,8 +90,8 @@ export async function recordAudit(db: Db, event: AuditInput) {
 
 const PRESENCE_WRITE_INTERVAL_MS = 8_000
 
-export async function loadWorkspaceState(workspaceId: string): Promise<WorkspaceState> {
-  const { db, user, role, membership } = await requireMember(workspaceId)
+export async function loadWorkspaceState(workspaceId: string, context: RequestContext): Promise<WorkspaceState> {
+  const { db, user, role, membership } = await requireMember(workspaceId, context)
 
   const now = Date.now()
   if (!membership.lastSeenAt || now - membership.lastSeenAt.getTime() > PRESENCE_WRITE_INTERVAL_MS) {
@@ -145,8 +146,7 @@ export async function loadWorkspaceState(workspaceId: string): Promise<Workspace
   }
 }
 
-export async function listMyWorkspaces(userId: string) {
-  const db = await getDb()
+export async function listMyWorkspaces(db: Db, userId: string) {
   return db
     .select({
       id: schema.workspace.id,

@@ -1,4 +1,3 @@
-import 'server-only'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { schema } from '@/lib/db'
@@ -14,7 +13,7 @@ import {
   TYPE_LABEL,
   type NodeType,
 } from '@/lib/ost'
-import { HttpError, auditInsert, newId, requireMember, toTreeNode } from '@/lib/workspace'
+import { HttpError, auditInsert, newId, requireMember, toTreeNode, type RequestContext } from '@/lib/workspace'
 
 const ADMIN_ONLY_TYPES: NodeType[] = ['goal', 'outcome']
 
@@ -66,7 +65,7 @@ function assertCanEdit(role: 'admin' | 'member', type: NodeType) {
 }
 
 async function getNodeInWorkspace(
-  db: Awaited<ReturnType<typeof requireMember>>['db'],
+  db: RequestContext['db'],
   workspaceId: string,
   nodeId: string,
 ) {
@@ -77,8 +76,8 @@ async function getNodeInWorkspace(
   return row
 }
 
-export async function createNode(workspaceId: string, input: z.infer<typeof createNodeSchema>) {
-  const { db, user, role } = await requireMember(workspaceId)
+export async function createNode(context: RequestContext, workspaceId: string, input: z.infer<typeof createNodeSchema>) {
+  const { db, user, role } = await requireMember(workspaceId, context)
   assertCanEdit(role, input.type)
 
   const parent = await getNodeInWorkspace(db, workspaceId, input.parentId)
@@ -117,11 +116,12 @@ export async function createNode(workspaceId: string, input: z.infer<typeof crea
 }
 
 export async function patchNode(
+  context: RequestContext,
   workspaceId: string,
   nodeId: string,
   input: z.infer<typeof patchNodeSchema>,
 ) {
-  const { db, user, role } = await requireMember(workspaceId)
+  const { db, user, role } = await requireMember(workspaceId, context)
   const current = await getNodeInWorkspace(db, workspaceId, nodeId)
   assertCanEdit(role, current.type)
 

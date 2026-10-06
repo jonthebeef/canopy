@@ -56,11 +56,12 @@ Reach, impact, and effort use a 0–10 scale. Confidence uses 10% steps. A card 
 
 ## Stack
 
-- [Next.js](https://nextjs.org/) and React
+- [React](https://react.dev/) and [Vite](https://vite.dev/) for the browser app
+- [Hono](https://hono.dev/) for the Worker API
 - [React Flow](https://reactflow.dev/) for the tree canvas
 - [Better Auth](https://better-auth.com/) for accounts and sessions
 - [Drizzle ORM](https://orm.drizzle.team/) with Cloudflare D1
-- [OpenNext for Cloudflare](https://opennext.js.org/cloudflare) on Cloudflare Workers
+- Cloudflare Workers static assets and D1
 - Tailwind CSS and Base UI
 
 ## Run it locally
@@ -89,11 +90,11 @@ You need Node.js 22+, pnpm, and a Cloudflare account.
    pnpm dev
    ```
 
-   The command applies the D1 migrations to a local database before starting Next.js at [http://localhost:3000](http://localhost:3000).
+   The command applies the D1 migrations to a local database before starting Vite and the local Workers runtime at [http://localhost:3000](http://localhost:3000).
 
 ## Deploy your fork to Cloudflare
 
-The repository includes the OpenNext, Wrangler, and D1 configuration. You still need your own Worker name, D1 database, and authentication secrets.
+The repository includes the Hono, Vite, Wrangler, and D1 configuration. You still need your own Worker name, D1 database, and authentication secrets.
 
 ### 1. Sign in to Cloudflare
 
@@ -110,17 +111,11 @@ pnpm exec wrangler d1 create opportunity-tree-preview
 
 Copy the production database details into `d1_databases` in [`wrangler.jsonc`](./wrangler.jsonc). Copy the preview database ID into `preview_database_id` and `previews.d1_databases`. Keeping these databases separate means a pull request cannot change production data.
 
-Also choose a unique Worker name. Set both of these fields to the same value:
+Also choose a unique Worker name:
 
 ```jsonc
 {
-  "name": "your-canopy-worker",
-  "services": [
-    {
-      "binding": "WORKER_SELF_REFERENCE",
-      "service": "your-canopy-worker"
-    }
-  ]
+  "name": "your-canopy-worker"
 }
 ```
 
@@ -183,7 +178,11 @@ The app is ready when the homepage, sign-in page, and this endpoint all return H
 curl -i https://YOUR-URL/api/auth/get-session
 ```
 
-See the official guides for [OpenNext deployment](https://opennext.js.org/cloudflare/get-started), [D1 migrations](https://developers.cloudflare.com/d1/reference/migrations/), and [Better Auth configuration](https://better-auth.com/docs/installation).
+See the official guides for [Hono on Cloudflare Workers](https://developers.cloudflare.com/workers/framework-guides/web-apps/more-web-frameworks/hono/), [D1 migrations](https://developers.cloudflare.com/d1/reference/migrations/), and [Better Auth with Hono](https://better-auth.com/docs/integrations/hono).
+
+### Why the app is split this way
+
+Vite compiles the React interface into static assets. Cloudflare serves page routes directly from its asset network, including the single-page-app fallback, so opening and navigating the app does not spend Worker CPU time. Only `/api/*` runs the Hono Worker for authentication and D1 access. This keeps the request path small enough to be practical on the Workers Free plan, while retaining the same React interface and data model.
 
 ## Cloudflare dashboard builds
 
@@ -191,22 +190,22 @@ You can connect the fork in **Workers & Pages → Create → Import a repository
 
 Use:
 
-- Build command: `pnpm exec opennextjs-cloudflare build`
-- Deploy command: `pnpm exec opennextjs-cloudflare deploy`
+- Build command: `pnpm run build`
+- Deploy command: `pnpm exec wrangler deploy`
 - Preview command: `pnpm exec wrangler preview`
 - Root directory: `/`
 
 Create both D1 databases, update `wrangler.jsonc`, apply migrations, and add the production and Preview authentication secrets before treating the deployment as live.
 
-The build command must use OpenNext. A plain `pnpm run build` only creates `.next`, so the following Preview command will fail because `.open-next/worker.js` does not exist.
+The Vite build produces both the static React assets and the Hono Worker bundle used by Wrangler.
 
 ## Useful commands
 
 | Command | Purpose |
 | --- | --- |
-| `pnpm dev` | Apply local migrations and run Next.js |
+| `pnpm dev` | Apply local migrations and run Vite in the Workers runtime |
 | `pnpm test` | Run the unit tests |
-| `pnpm build` | Build the Next.js application |
+| `pnpm build` | Build the static React app and Hono Worker |
 | `pnpm cf:preview` | Build and preview in the local Workers runtime |
 | `pnpm cf:deploy` | Build and deploy to Cloudflare |
 | `pnpm db:generate` | Generate a Drizzle migration after a schema change |

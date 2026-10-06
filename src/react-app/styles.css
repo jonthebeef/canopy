@@ -106,3 +106,8 @@
   background-image: radial-gradient(color-mix(in oklch, var(--foreground) 14%, transparent) 1px, transparent 1px);
   background-size: 20px 20px;
 }
+
+:root {
+  --font-plex-sans: 'IBM Plex Sans';
+  --font-plex-mono: 'IBM Plex Mono';
+}

@@ -1,10 +1,7 @@
 pmOnFail: ignore
 
-minimumReleaseAgeExclude:
-  - '@next/*'
-  - next
+autoInstallPeers: false
 
 allowBuilds:
   esbuild: true
   workerd: true
-  sharp: true
