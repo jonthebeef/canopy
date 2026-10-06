@@ -19,8 +19,7 @@
     {
       "binding": "DB",
       "database_name": "opportunity-tree",
-      // Replace with the id printed by `pnpm exec wrangler d1 create opportunity-tree`
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "c1534672-db8c-4b0b-a31b-4618fb228292",
       "migrations_dir": "drizzle"
     }
   ],
