@@ -1,0 +1,227 @@
+import 'server-only'
+import { and, eq } from 'drizzle-orm'
+import { z } from 'zod'
+import { schema } from '@/lib/db'
+import type { AuditChanges } from '@/lib/db/schema'
+import {
+  ALLOWED_CHILDREN,
+  NODE_STATUSES,
+  NODE_TYPES,
+  STATUS_LABEL,
+  TYPE_LABEL,
+  type NodeType,
+} from '@/lib/ost'
+import { HttpError, newId, recordAudit, requireMember, toTreeNode } from '@/lib/workspace'
+
+const ADMIN_ONLY_TYPES: NodeType[] = ['goal', 'outcome']
+
+const score = (max: number) => z.number().min(0).max(max).nullable()
+
+const editableFields = {
+  title: z.string().trim().min(1, 'Title is required').max(200),
+  description: z.string().max(5000),
+  status: z.enum(NODE_STATUSES),
+  reach: score(1_000_000_000),
+  impact: score(10),
+  confidence: score(100),
+  effort: z.number().min(0.01).max(10_000).nullable(),
+}
+
+export const createNodeSchema = z.object({
+  parentId: z.string().min(1),
+  type: z.enum(NODE_TYPES),
+  title: editableFields.title,
+  description: editableFields.description.optional(),
+})
+
+export const patchNodeSchema = z.discriminatedUnion('op', [
+  z.object({
+    op: z.literal('update'),
+    fields: z.object(editableFields).partial(),
+  }),
+  z.object({ op: z.literal('move'), parentId: z.string().min(1) }),
+  z.object({ op: z.literal('archive'), reason: z.string().trim().max(500).optional() }),
+  z.object({ op: z.literal('restore') }),
+])
+
+type FieldName = keyof typeof editableFields
+const FIELD_LABEL: Record<FieldName, string> = {
+  title: 'title',
+  description: 'description',
+  status: 'status',
+  reach: 'reach',
+  impact: 'impact',
+  confidence: 'confidence',
+  effort: 'effort',
+}
+
+function assertCanEdit(role: 'admin' | 'member', type: NodeType) {
+  if (role !== 'admin' && ADMIN_ONLY_TYPES.includes(type)) {
+    throw new HttpError(403, `Only the workspace admin can change the ${TYPE_LABEL[type].toLowerCase()}`)
+  }
+}
+
+async function getNodeInWorkspace(
+  db: Awaited<ReturnType<typeof requireMember>>['db'],
+  workspaceId: string,
+  nodeId: string,
+) {
+  const row = await db.query.node.findFirst({
+    where: and(eq(schema.node.id, nodeId), eq(schema.node.workspaceId, workspaceId)),
+  })
+  if (!row) throw new HttpError(404, 'Item not found')
+  return row
+}
+
+export async function createNode(workspaceId: string, input: z.infer<typeof createNodeSchema>) {
+  const { db, user, role } = await requireMember(workspaceId)
+  assertCanEdit(role, input.type)
+
+  const parent = await getNodeInWorkspace(db, workspaceId, input.parentId)
+  if (!ALLOWED_CHILDREN[parent.type].includes(input.type)) {
+    throw new HttpError(
+      400,
+      `A ${TYPE_LABEL[input.type].toLowerCase()} can't sit under a ${TYPE_LABEL[parent.type].toLowerCase()}`,
+    )
+  }
+
+  const id = newId()
+  const [row] = await db
+    .insert(schema.node)
+    .values({
+      id,
+      workspaceId,
+      parentId: parent.id,
+      type: input.type,
+      title: input.title,
+      description: input.description ?? '',
+      sortOrder: Date.now(),
+      createdBy: user.id,
+      updatedBy: user.id,
+    })
+    .returning()
+
+  await recordAudit(db, {
+    workspaceId,
+    nodeId: id,
+    actorId: user.id,
+    action: 'create',
+    summary: `Added ${TYPE_LABEL[input.type].toLowerCase()} "${input.title}" under "${parent.title}"`,
+  })
+  return toTreeNode(row)
+}
+
+export async function patchNode(
+  workspaceId: string,
+  nodeId: string,
+  input: z.infer<typeof patchNodeSchema>,
+) {
+  const { db, user, role } = await requireMember(workspaceId)
+  const current = await getNodeInWorkspace(db, workspaceId, nodeId)
+  assertCanEdit(role, current.type)
+
+  if (input.op === 'update') {
+    const changes: AuditChanges = {}
+    const set: Partial<typeof schema.node.$inferInsert> = {}
+    for (const [key, value] of Object.entries(input.fields) as [FieldName, unknown][]) {
+      if (value === undefined) continue
+      if (current[key] === value) continue
+      changes[key] = { from: current[key], to: value }
+      ;(set as Record<string, unknown>)[key] = value
+    }
+    if (Object.keys(set).length === 0) return toTreeNode(current)
+
+    const [row] = await db
+      .update(schema.node)
+      .set({ ...set, updatedBy: user.id, updatedAt: new Date() })
+      .where(eq(schema.node.id, nodeId))
+      .returning()
+
+    const keys = Object.keys(changes) as FieldName[]
+    const summary =
+      keys.length === 1 && keys[0] === 'status'
+        ? `Set "${row.title}" to ${STATUS_LABEL[row.status]}`
+        : `Changed ${keys.map((k) => FIELD_LABEL[k]).join(', ')} on "${row.title}"`
+    await recordAudit(db, { workspaceId, nodeId, actorId: user.id, action: 'update', summary, changes })
+    return toTreeNode(row)
+  }
+
+  if (input.op === 'move') {
+    if (current.type === 'goal') throw new HttpError(400, 'The goal is the root of the tree')
+    if (input.parentId === nodeId) throw new HttpError(400, "An item can't be its own parent")
+    const target = await getNodeInWorkspace(db, workspaceId, input.parentId)
+    if (!ALLOWED_CHILDREN[target.type].includes(current.type)) {
+      throw new HttpError(
+        400,
+        `A ${TYPE_LABEL[current.type].toLowerCase()} can't sit under a ${TYPE_LABEL[target.type].toLowerCase()}`,
+      )
+    }
+    // Reject moves that would put a node underneath its own descendant.
+    const all = await db
+      .select({ id: schema.node.id, parentId: schema.node.parentId })
+      .from(schema.node)
+      .where(eq(schema.node.workspaceId, workspaceId))
+    const parentOf = new Map(all.map((n) => [n.id, n.parentId]))
+    let cursor: string | null | undefined = target.id
+    while (cursor) {
+      if (cursor === nodeId) throw new HttpError(400, "Can't move an item underneath itself")
+      cursor = parentOf.get(cursor)
+    }
+    const fromParent = current.parentId
+      ? await db.query.node.findFirst({ where: eq(schema.node.id, current.parentId) })
+      : null
+
+    const [row] = await db
+      .update(schema.node)
+      .set({ parentId: target.id, sortOrder: Date.now(), updatedBy: user.id, updatedAt: new Date() })
+      .where(eq(schema.node.id, nodeId))
+      .returning()
+    await recordAudit(db, {
+      workspaceId,
+      nodeId,
+      actorId: user.id,
+      action: 'move',
+      summary: `Moved "${row.title}" from "${fromParent?.title ?? '—'}" to "${target.title}"`,
+      changes: { parent: { from: fromParent?.title ?? null, to: target.title } },
+    })
+    return toTreeNode(row)
+  }
+
+  if (input.op === 'archive') {
+    if (current.type === 'goal') throw new HttpError(400, "The goal can't be archived")
+    if (current.archivedAt) return toTreeNode(current)
+    const reason = input.reason || null
+    const [row] = await db
+      .update(schema.node)
+      .set({ archivedAt: new Date(), archivedBy: user.id, archiveReason: reason })
+      .where(eq(schema.node.id, nodeId))
+      .returning()
+    await recordAudit(db, {
+      workspaceId,
+      nodeId,
+      actorId: user.id,
+      action: 'archive',
+      summary: `Archived ${TYPE_LABEL[row.type].toLowerCase()} "${row.title}"`,
+      reason,
+    })
+    return toTreeNode(row)
+  }
+
+  if (!current.archivedAt) return toTreeNode(current)
+  const [row] = await db
+    .update(schema.node)
+    .set({ archivedAt: null, archivedBy: null, archiveReason: null, updatedBy: user.id, updatedAt: new Date() })
+    .where(eq(schema.node.id, nodeId))
+    .returning()
+  await recordAudit(db, {
+    workspaceId,
+    nodeId,
+    actorId: user.id,
+    action: 'restore',
+    summary: `Restored ${TYPE_LABEL[row.type].toLowerCase()} "${row.title}"`,
+    changes: current.archiveReason
+      ? { archiveReason: { from: current.archiveReason, to: null } }
+      : null,
+  })
+  return toTreeNode(row)
+}

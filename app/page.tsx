@@ -1,47 +1,86 @@
-export default function Page() {
+import Link from 'next/link'
+import { redirect } from 'next/navigation'
+import { Archive, GitBranch, Table2, Users } from 'lucide-react'
+import { Brand } from '@/components/brand'
+import { Button } from '@/components/ui/button'
+import { getSession } from '@/lib/auth'
+
+const FEATURES = [
+  {
+    icon: GitBranch,
+    title: 'One tree, two views',
+    body: 'Map outcomes, opportunities, solutions and experiments on a canvas, or edit the same records in a sortable table.',
+  },
+  {
+    icon: Table2,
+    title: 'RICE on anything',
+    body: 'Optionally score any node. Scores compute automatically and export straight to CSV for your spreadsheet.',
+  },
+  {
+    icon: Users,
+    title: 'Built for the trio',
+    body: 'PM, designer and engineer each sign in. Edits sync live and every change carries a name.',
+  },
+  {
+    icon: Archive,
+    title: 'Nothing silently disappears',
+    body: 'Removing an idea archives it with a reason. The full history is audited and anything can be restored.',
+  },
+]
+
+export default async function Home() {
+  if ((await getSession())?.user) redirect('/workspaces')
+
   return (
-    <main
-      style={{
-        colorScheme: 'light dark',
-        position: 'relative',
-        display: 'flex',
-        minHeight: '100vh',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'light-dark(#fff, #000)',
-        color: 'light-dark(#000, #fff)',
-      }}
-    >
-      <svg
-        aria-hidden="true"
-        style={{ width: 80, height: 80 }}
-        width={80}
-        height={80}
-        fill="none"
-        viewBox="0 0 20 20"
-        xmlns="http://www.w3.org/2000/svg"
-        stroke="currentColor"
-        strokeWidth="0.5"
-      >
-        <path
-          d="M14.2 14.2H17V6.9375C17 4.76288 15.2371 3 13.0625 3H5.8V5.8M14.2 14.2V7.79063L7.79062 14.2H14.2ZM14.2 14.2V17H6.9375C4.76288 17 3 15.2371 3 13.0625V5.8H5.8M5.8 5.8V12.2313L12.2313 5.8H5.8Z"
-          strokeLinejoin="round"
-        />
-      </svg>
-      <p
-        style={{
-          position: 'absolute',
-          left: '50%',
-          top: 'calc(50% + 56px)',
-          transform: 'translateX(-50%)',
-          whiteSpace: 'nowrap',
-          fontSize: '14px',
-          fontWeight: 500,
-          color: 'light-dark(#71717a, #a1a1aa)',
-        }}
-      >
-        Your v0 generation will show here.
-      </p>
-    </main>
+    <div className="flex min-h-dvh flex-col">
+      <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-5">
+        <Brand />
+        <nav className="flex items-center gap-2">
+          <Button variant="ghost" nativeButton={false} render={<Link href="/sign-in" />}>
+            Sign in
+          </Button>
+          <Button nativeButton={false} render={<Link href="/sign-up" />}>Get started</Button>
+        </nav>
+      </header>
+
+      <main className="flex flex-1 flex-col">
+        <section className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-6 pt-16 pb-20 md:pt-24">
+          <p className="font-mono text-xs uppercase tracking-widest text-primary">
+            Opportunity Solution Trees
+          </p>
+          <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-balance md:text-6xl">
+            Your discovery work, structured instead of stickied.
+          </h1>
+          <p className="max-w-2xl text-lg leading-relaxed text-muted-foreground text-pretty">
+            Canopy gives your product trio a shared, auditable opportunity solution tree. Build it
+            visually, score it in a table, and never lose track of why an idea was dropped.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Button size="lg" nativeButton={false} render={<Link href="/sign-up" />}>
+              Create a workspace
+            </Button>
+            <Button size="lg" variant="outline" nativeButton={false} render={<Link href="/sign-in" />}>
+              I have an invite
+            </Button>
+          </div>
+        </section>
+
+        <section className="canvas-grid border-y">
+          <ul className="mx-auto grid w-full max-w-6xl gap-px px-6 py-16 sm:grid-cols-2 lg:grid-cols-4">
+            {FEATURES.map(({ icon: Icon, title, body }) => (
+              <li key={title} className="flex flex-col gap-3 rounded-lg border bg-card p-6">
+                <Icon className="size-5 text-primary" aria-hidden="true" />
+                <h2 className="font-semibold">{title}</h2>
+                <p className="text-sm leading-relaxed text-muted-foreground">{body}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </main>
+
+      <footer className="mx-auto w-full max-w-6xl px-6 py-8 text-sm text-muted-foreground">
+        Runs on Cloudflare Workers + D1.
+      </footer>
+    </div>
   )
 }
