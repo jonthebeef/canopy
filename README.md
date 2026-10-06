@@ -101,13 +101,14 @@ The repository includes the OpenNext, Wrangler, and D1 configuration. You still 
 pnpm exec wrangler login
 ```
 
-### 2. Create a D1 database
+### 2. Create production and preview D1 databases
 
 ```bash
 pnpm exec wrangler d1 create opportunity-tree
+pnpm exec wrangler d1 create opportunity-tree-preview
 ```
 
-Copy the returned `database_name` and `database_id` into the `d1_databases` entry in [`wrangler.jsonc`](./wrangler.jsonc).
+Copy the production database details into `d1_databases` in [`wrangler.jsonc`](./wrangler.jsonc). Copy the preview database ID into `preview_database_id` and `previews.d1_databases`. Keeping these databases separate means a pull request cannot change production data.
 
 Also choose a unique Worker name. Set both of these fields to the same value:
 
@@ -123,10 +124,11 @@ Also choose a unique Worker name. Set both of these fields to the same value:
 }
 ```
 
-### 3. Apply the production database migrations
+### 3. Apply the database migrations
 
 ```bash
 pnpm db:migrate:remote
+pnpm exec wrangler d1 migrations apply DB --remote --preview
 ```
 
 Do this before opening the deployed app. Run it again whenever a pull includes a new file in `drizzle/`.
@@ -167,6 +169,14 @@ Check that both secrets are attached to the expected Worker:
 pnpm exec wrangler secret list
 ```
 
+Give new Worker Previews their own authentication secret:
+
+```bash
+openssl rand -base64 32 | pnpm exec wrangler preview base-config secret put BETTER_AUTH_SECRET
+```
+
+Preview deployments derive their Better Auth URL from the branch Preview hostname. Production still requires the explicit `BETTER_AUTH_URL` above.
+
 The app is ready when the homepage, sign-in page, and this endpoint all return HTTP 200:
 
 ```bash
@@ -183,9 +193,10 @@ Use:
 
 - Build command: `pnpm exec opennextjs-cloudflare build`
 - Deploy command: `pnpm exec opennextjs-cloudflare deploy`
+- Preview command: `pnpm exec wrangler preview`
 - Root directory: `/`
 
-Create the D1 database, update `wrangler.jsonc`, apply migrations, and add `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL` to the Worker before treating the deployment as live.
+Create both D1 databases, update `wrangler.jsonc`, apply migrations, and add the production and Preview authentication secrets before treating the deployment as live.
 
 ## Useful commands
 
