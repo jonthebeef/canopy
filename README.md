@@ -1,4 +1,4 @@
-# Canopy
+# Canopy - Opportunity and Solution Trees for Product Trios
 
 Canopy is a collaborative opportunity solution tree for product trios. It gives product managers, designers, and engineers one shared place to connect a business goal to product outcomes, customer opportunities, possible solutions, and experiments.
 
