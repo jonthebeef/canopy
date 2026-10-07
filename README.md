@@ -2,9 +2,7 @@
 
 Canopy is a collaborative opportunity solution tree for product trios. It gives product managers, designers, and engineers one shared place to connect a business goal to product outcomes, customer opportunities, possible solutions, and experiments.
 
-**[Try the hosted app](https://opportunity-solution-tree-app.jonthebeef.workers.dev)**
-
-Canopy is deliberately opinionated. The defaults reflect how I think a trio should work:
+Canopy is deliberately opinionated. The defaults reflect an interoperation of how a trio should work:
 
 - Start with one clear business goal.
 - Define measurable product outcomes the team can influence.
