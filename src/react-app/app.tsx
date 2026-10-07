@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useEffect, type ReactNode } from 'react'
 import useSWR from 'swr'
 import { Archive, ArrowRight, GitBranch, Table2, Users } from 'lucide-react'
 import { AuthForm } from '@/components/auth-form'
@@ -10,6 +10,7 @@ import { UserMenu } from '@/components/user-menu'
 import { CreateWorkspaceForm, JoinWorkspaceForm } from '@/components/workspace-forms'
 import { useSession } from '@/lib/auth-client'
 import type { WorkspaceState } from '@/lib/ost'
+import { safeNextPath } from '@/lib/safe-next'
 
 const FEATURES = [
   { icon: GitBranch, title: 'One tree, two views', body: 'Map outcomes, opportunities, solutions and experiments on a canvas, or edit the same records in a sortable table.' },
@@ -61,6 +62,15 @@ function ErrorPage({ message = 'We could not find that page.' }: { message?: str
   )
 }
 
+function GuestPage({ children, destination = '/workspaces' }: { children: ReactNode; destination?: string }) {
+  const session = useSession()
+  useEffect(() => {
+    if (session.data?.user) window.location.replace(destination)
+  }, [destination, session.data?.user])
+  if (session.isPending || session.data?.user) return <LoadingPage />
+  return children
+}
+
 function HomePage() {
   useTitle('Canopy — Opportunity Solution Trees for product trios')
   return (
@@ -101,14 +111,16 @@ function HomePage() {
 
 function AuthPage({ mode }: { mode: 'sign-in' | 'sign-up' }) {
   useTitle(`${mode === 'sign-in' ? 'Sign in' : 'Create account'} — Canopy`)
-  const next = new URLSearchParams(location.search).get('next') ?? undefined
+  const next = safeNextPath(new URLSearchParams(location.search).get('next'))
   return (
-    <AuthShell
-      title={mode === 'sign-in' ? 'Welcome back' : 'Create your account'}
-      subtitle={mode === 'sign-in' ? 'Sign in to continue to your opportunity solution trees.' : 'Join your product trio or start a new opportunity solution tree.'}
-    >
-      <AuthForm mode={mode} next={next} />
-    </AuthShell>
+    <GuestPage destination={next}>
+      <AuthShell
+        title={mode === 'sign-in' ? 'Welcome back' : 'Create your account'}
+        subtitle={mode === 'sign-in' ? 'Sign in to continue to your opportunity solution trees.' : 'Join your product trio or start a new opportunity solution tree.'}
+      >
+        <AuthForm mode={mode} next={next} />
+      </AuthShell>
+    </GuestPage>
   )
 }
 
