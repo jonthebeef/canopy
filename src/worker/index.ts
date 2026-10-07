@@ -27,6 +27,7 @@ import {
   toTreeNode,
   type RequestContext,
 } from '@/lib/workspace'
+import { getSetCookieHeaders } from '@/src/worker/auth-headers'
 import { hasTrustedMutationOrigin } from '@/src/worker/security'
 
 type Bindings = AuthEnv
@@ -48,7 +49,14 @@ app.use('/api/*', async (c, next) => {
 })
 
 async function requestContext(c: AppContext): Promise<RequestContext> {
-  const session = await getAuth(c.env, c.req.raw).api.getSession({ headers: c.req.raw.headers })
+  const result = await getAuth(c.env, c.req.raw).api.getSession({
+    headers: c.req.raw.headers,
+    returnHeaders: true,
+  })
+  for (const cookie of getSetCookieHeaders(result.headers)) {
+    c.header('Set-Cookie', cookie, { append: true })
+  }
+  const session = result.response
   if (!session?.user) throw new HttpError(401, 'Not signed in')
   return {
     db: getDb(c.env.DB),
