@@ -27,7 +27,7 @@ results, resources created, files changed, and any optional next steps.
 
 The agent has a detailed, idempotent runbook in [`AGENT_INSTALL.md`](./AGENT_INSTALL.md). Wrangler can deploy on the free plan, although the $5 USD Workers Paid plan is recommended for reliable password authentication because its per-request CPU allowance is substantially higher.
 
-Canopy is deliberately opinionated. The defaults reflect an interoperation of how a trio should work:
+Canopy is deliberately opinionated. The defaults reflect an interprotation of how a trio should work:
 
 - Start with one clear business goal.
 - Define measurable product outcomes the team can influence.
