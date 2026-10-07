@@ -4,6 +4,31 @@ Canopy is a collaborative opportunity solution tree for product trios. It gives 
 
 **[Try the hosted app](https://opportunity-solution-tree-app.jonthebeef.workers.dev)**
 
+## Deploy your own with a coding agent
+
+Fork or clone this repository, open it with a coding agent that can use the terminal, and paste this prompt:
+
+```text
+Set up and deploy this Canopy repository to my Cloudflare account. Read
+AGENT_INSTALL.md and follow it as the authoritative runbook. Work autonomously
+until the production app is live and verified. Install the required local tools
+when they are missing, use the repository-pinned Wrangler CLI, create and
+configure separate production and preview D1 databases, apply every migration,
+generate strong Better Auth secrets, deploy the Worker, and smoke-test it.
+
+This prompt authorises the routine local installs, repository configuration,
+Cloudflare resource creation, migrations, secret uploads, and deployments needed
+for a new installation. Do not ask me to copy IDs, edit config, choose generated
+secrets, or run commands for you. Only interrupt me when you genuinely need me
+to complete Cloudflare authentication, provide an API token/account ID in a
+headless environment, approve elevated privileges or a billable/destructive
+action, or resolve ambiguous ownership of an existing resource. Never print,
+commit, or expose a secret. When finished, give me the live URL, verification
+results, resources created, files changed, and any optional next steps.
+```
+
+The agent has a detailed, idempotent runbook in [`AGENT_INSTALL.md`](./AGENT_INSTALL.md). Wrangler can deploy on the free plan, although the $5 USD Workers Paid plan is recommended for reliable password authentication because its per-request CPU allowance is substantially higher.
+
 Canopy is deliberately opinionated. The defaults reflect how I think a trio should work:
 
 - Start with one clear business goal.
