@@ -22,14 +22,15 @@ import '@xyflow/react/dist/style.css'
 import { ChevronDown, ChevronRight, Plus, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { ALLOWED_CHILDREN, ancestry, riceScore, type TreeNode } from '@/lib/ost'
+import { ALLOWED_CHILDREN, ancestry, type TreeNode } from '@/lib/ost'
 import { canAddChild, childrenMap, descendantIds } from '@/lib/tree'
 import { layoutTree } from '@/lib/tree-layout'
 import { sortOrderBefore } from '@/lib/tree-order'
 import { searchTreeNodes } from '@/lib/tree-search'
 import { cn } from '@/lib/utils'
 import { useWs } from './context'
-import { ScoreChip, StatusLabel, TypeTag } from './primitives'
+import { StatusLabel, TypeTag } from './primitives'
+import { MethodChip } from './scoring'
 
 const NODE_W = 248
 const NODE_H = 132
@@ -63,7 +64,6 @@ const OstNodeCard = memo(function OstNodeCard({ data }: NodeProps<OstFlowNode>) 
     onToggle,
     onAdd,
   } = data
-  const score = riceScore(node)
   const isRoot = node.type === 'goal'
 
   return (
@@ -87,7 +87,7 @@ const OstNodeCard = memo(function OstNodeCard({ data }: NodeProps<OstFlowNode>) 
       <Handle type="target" position={Position.Top} className="opacity-0" isConnectable={false} />
       <div className="flex items-center justify-between gap-2">
         <TypeTag type={node.type} />
-        <ScoreChip score={score} />
+        <MethodChip node={node} />
       </div>
       <p
         className={cn(

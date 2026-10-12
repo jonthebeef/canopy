@@ -13,6 +13,7 @@ import {
   TYPE_LABEL,
   type NodeType,
 } from '@/lib/ost'
+import { isValidAssessment, SCORING_METHODS } from '@/lib/scoring'
 import { HttpError, auditInsert, newId, requireMember, toTreeNode, type RequestContext } from '@/lib/workspace'
 
 const ADMIN_ONLY_TYPES: NodeType[] = ['goal', 'outcome']
@@ -33,6 +34,12 @@ const editableFields = {
     .refine((v) => v % 10 === 0, 'Confidence goes in 10% steps')
     .nullable(),
   effort: z.number().min(EFFORT_MIN, 'Effort must be at least 0.1').max(RICE_MAX, 'Use 0.1–10').nullable(),
+  scoringMethod: z.enum(SCORING_METHODS).nullable(),
+  assessment: z
+    .string()
+    .max(6000)
+    .refine(isValidAssessment, 'Invalid assessment')
+    .nullable(),
 }
 
 export const createNodeSchema = z.object({

@@ -18,9 +18,6 @@ import {
   ancestry,
   isEffectivelyArchived,
   NODE_STATUSES,
-  RICE_FIELDS,
-  outOfScaleRice,
-  riceScore,
   STATUS_LABEL,
   TYPE_LABEL,
   type NodeStatus,
@@ -30,7 +27,8 @@ import { canAddChild, descendantIds, validNewParents } from '@/lib/tree'
 import { ActivityList } from './activity-list'
 import { useWs } from './context'
 import { EvidenceSection } from './evidence-section'
-import { CommitText, NativeSelect, RiceInput, ScoreChip, TypeTag } from './primitives'
+import { CommitText, NativeSelect, TypeTag } from './primitives'
+import { ScoringSection } from './scoring'
 
 export function NodePanel() {
   const { selectedId, byId, select } = useWs()
@@ -62,8 +60,6 @@ function NodeDetails({ node }: { node: TreeNode }) {
   const locked = !isAdmin && (node.type === 'goal' || node.type === 'outcome')
   const hiddenByAncestor = !node.archivedAt && isEffectivelyArchived(node.id, byId)
   const path = ancestry(node.id, byId)
-  const score = riceScore(node)
-  const outOfScale = outOfScaleRice(node)
   const parents = validNewParents(node, state.nodes)
   const childTypes = canAddChild(node.type, isAdmin)
   const update = (fields: Parameters<typeof patchNode>[1] & { op: 'update' }) => patchNode(node.id, fields)
@@ -137,46 +133,11 @@ function NodeDetails({ node }: { node: TreeNode }) {
         </NativeSelect>
       </div>
 
-      <section aria-labelledby="rice-heading" className="flex flex-col gap-3 rounded-lg border p-3">
-        <div className="flex items-center justify-between">
-          <h3 id="rice-heading" className="text-sm font-semibold">
-            RICE score <span className="font-normal text-muted-foreground">(optional)</span>
-          </h3>
-          {score != null ? (
-            <ScoreChip score={score} />
-          ) : (
-            <span className="text-xs text-muted-foreground">
-              {outOfScale.length > 0 ? 'Needs re-scoring' : 'Fill all four to score'}
-            </span>
-          )}
-        </div>
-        {outOfScale.length > 0 && (
-          <p role="status" className="rounded-md bg-muted px-2.5 py-2 text-xs leading-relaxed text-foreground">
-            {outOfScale
-              .map((k) => RICE_FIELDS.find((f) => f.key === k)!.label)
-              .join(', ')}{' '}
-            {outOfScale.length === 1 ? 'was' : 'were'} scored on the old scale. Re-enter{' '}
-            {outOfScale.length === 1 ? 'it' : 'them'} on the 0–10 scale to include this item in the RICE ranking.
-          </p>
-        )}
-        <div className="grid grid-cols-2 gap-3">
-          {RICE_FIELDS.map(({ key, label, hint }) => (
-            <RiceField key={key} label={label} hint={hint}>
-              <RiceInput
-                field={key}
-                node={node}
-                disabled={locked}
-                onCommit={(v) => update({ op: 'update', fields: { [key]: v } })}
-              />
-            </RiceField>
-          ))}
-        </div>
-        <p className="font-mono text-[11px] leading-relaxed text-muted-foreground">
-          (Reach × Impact × Confidence) ÷ Effort
-          {score != null &&
-            ` = (${node.reach} × ${node.impact} × ${node.confidence}%) ÷ ${node.effort}`}
-        </p>
-      </section>
+      <ScoringSection
+        node={node}
+        locked={locked}
+        update={(fields) => update({ op: 'update', fields })}
+      />
 
       <EvidenceSection node={node} />
 
@@ -241,18 +202,6 @@ function NodeDetails({ node }: { node: TreeNode }) {
           if (ok) setArchiveOpen(false)
         }}
       />
-    </div>
-  )
-}
-
-function RiceField({ label, hint, children }: { label: string; hint: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="flex items-baseline justify-between gap-1 text-xs">
-        <span className="font-medium">{label}</span>
-        <span className="text-muted-foreground">{hint}</span>
-      </span>
-      {children}
     </div>
   )
 }

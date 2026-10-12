@@ -143,6 +143,8 @@ export const node = sqliteTable(
     impact: real('impact'),
     confidence: real('confidence'),
     effort: real('effort'),
+    scoringMethod: text('scoring_method', { enum: ['rice', 'impact_effort', 'assessment'] }),
+    assessment: text('assessment'),
     sortOrder: real('sort_order').notNull().default(0),
     archivedAt: integer('archived_at', { mode: 'timestamp_ms' }),
     archivedBy: text('archived_by'),

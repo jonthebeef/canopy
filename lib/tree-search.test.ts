@@ -15,6 +15,8 @@ function node(id: string, title: string, description = '', archivedAt: number | 
     impact: null,
     confidence: null,
     effort: null,
+    scoringMethod: null,
+    assessment: null,
     sortOrder: 0,
     archivedAt,
     archivedBy: null,

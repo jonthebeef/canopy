@@ -1,3 +1,5 @@
+import type { ScoringMethod } from '@/lib/scoring'
+
 export const NODE_TYPES = [
   'goal',
   'outcome',
@@ -97,6 +99,9 @@ export type TreeNode = {
   impact: number | null
   confidence: number | null
   effort: number | null
+  scoringMethod: ScoringMethod | null
+  /** JSON string of an Assessment; see lib/scoring.ts. */
+  assessment: string | null
   sortOrder: number
   archivedAt: number | null
   archivedBy: string | null

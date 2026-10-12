@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useRef } from 'react'
 import useSWR, { useSWRConfig } from 'swr'
 import { toast } from 'sonner'
+import type { ScoringMethod } from '@/lib/scoring'
 import type {
   ActivityEvent,
   Evidence,
@@ -39,6 +40,8 @@ export type EditableFields = Partial<{
   impact: number | null
   confidence: number | null
   effort: number | null
+  scoringMethod: ScoringMethod | null
+  assessment: string | null
 }>
 
 export type EvidenceInput = {

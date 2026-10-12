@@ -6,23 +6,32 @@ import { Button } from '@/components/ui/button'
 import {
   NODE_STATUSES,
   NODE_TYPES,
-  RICE_FIELDS,
-  riceScore,
   STATUS_LABEL,
   TYPE_LABEL,
   type NodeStatus,
   type NodeType,
 } from '@/lib/ost'
+import {
+  METHOD_LABEL,
+  RANKABLE_METHODS,
+  SCORING_METHODS,
+  effectiveMethod,
+  isScored,
+  methodScore,
+  type RankableMethod,
+  type ScoringMethod,
+} from '@/lib/scoring'
 import { canAddChild, flattenTree, type FlatRow } from '@/lib/tree'
 import { cn } from '@/lib/utils'
 import { useWs } from './context'
-import { CommitText, NativeSelect, RiceInput, ScoreChip, TypeTag } from './primitives'
+import { CommitText, NativeSelect, TypeTag } from './primitives'
+import { MethodChip } from './scoring'
 
-type SortKey = 'tree' | 'rice' | 'updated' | 'title'
+type SortKey = 'tree' | 'score' | 'updated' | 'title'
 
 const SORT_LABEL: Record<SortKey, string> = {
   tree: 'Tree order',
-  rice: 'RICE score',
+  score: 'Score (grouped by method)',
   updated: 'Last edited',
   title: 'Title',
 }
@@ -35,6 +44,7 @@ export function TableView() {
   const [desc, setDesc] = useState(true)
   const [query, setQuery] = useState('')
   const [ranked, setRanked] = useState(false)
+  const [rankMethod, setRankMethod] = useState<RankableMethod>('rice')
 
   const { rows, unscored } = useMemo(() => {
     let list: FlatRow[] = flattenTree(state.nodes, showArchived)
@@ -46,16 +56,20 @@ export function TableView() {
         (!q || node.title.toLowerCase().includes(q) || node.description.toLowerCase().includes(q)),
     )
     if (ranked) {
-      const scoredRows = list.filter((r) => riceScore(r.node) != null)
-      scoredRows.sort((a, b) => riceScore(b.node)! - riceScore(a.node)!)
+      const scoredRows = list.filter((r) => methodScore(r.node, rankMethod) != null)
+      scoredRows.sort((a, b) => methodScore(b.node, rankMethod)! - methodScore(a.node, rankMethod)!)
       return { rows: scoredRows, unscored: list.length - scoredRows.length }
     }
     if (sort !== 'tree') {
       const dir = desc ? -1 : 1
       list = [...list].sort((a, b) => {
-        if (sort === 'rice') {
-          const sa = riceScore(a.node)
-          const sb = riceScore(b.node)
+        if (sort === 'score') {
+          // Scores from different methods aren't comparable, so group by method first.
+          const ma = effectiveMethod(a.node)
+          const mb = effectiveMethod(b.node)
+          if (ma !== mb) return SCORING_METHODS.indexOf(ma) - SCORING_METHODS.indexOf(mb)
+          const sa = methodScore(a.node, ma)
+          const sb = methodScore(b.node, mb)
           if (sa == null && sb == null) return 0
           if (sa == null) return 1
           if (sb == null) return -1
@@ -66,10 +80,10 @@ export function TableView() {
       })
     }
     return { rows: list, unscored: 0 }
-  }, [state.nodes, showArchived, typeFilter, statusFilter, sort, desc, query, ranked])
+  }, [state.nodes, showArchived, typeFilter, statusFilter, sort, desc, query, ranked, rankMethod])
 
   const flat = !ranked && sort === 'tree'
-  const scored = rows.filter((r) => riceScore(r.node) != null).length
+  const scored = rows.filter((r) => isScored(r.node)).length
 
   return (
     <div className="flex h-full flex-col">
@@ -77,7 +91,7 @@ export function TableView() {
         <div role="radiogroup" aria-label="Table mode" className="flex rounded-md border bg-muted p-0.5">
           {[
             { value: false, label: 'All items' },
-            { value: true, label: 'Ranked by RICE' },
+            { value: true, label: 'Ranked' },
           ].map((opt) => (
             <button
               key={opt.label}
@@ -94,6 +108,20 @@ export function TableView() {
             </button>
           ))}
         </div>
+        {ranked && (
+          <NativeSelect
+            aria-label="Rank by method"
+            value={rankMethod}
+            onChange={(e) => setRankMethod(e.target.value as RankableMethod)}
+            className="w-40"
+          >
+            {RANKABLE_METHODS.map((m) => (
+              <option key={m} value={m}>
+                {METHOD_LABEL[m]}
+              </option>
+            ))}
+          </NativeSelect>
+        )}
         <label className="relative flex min-w-48 flex-1 items-center sm:max-w-xs">
           <span className="sr-only">Search items</span>
           <Search className="pointer-events-none absolute left-2.5 size-4 text-muted-foreground" aria-hidden="true" />
@@ -163,7 +191,7 @@ export function TableView() {
       </div>
 
       <div className="flex-1 overflow-auto">
-        <table className="w-full min-w-[960px] border-collapse text-sm">
+        <table className="w-full min-w-[900px] border-collapse text-sm">
           <thead className="sticky top-0 z-10 bg-muted text-left text-xs text-muted-foreground">
             <tr>
               {ranked && (
@@ -173,17 +201,8 @@ export function TableView() {
               )}
               <th scope="col" className="px-3 py-2 font-medium">Item</th>
               <th scope="col" className="w-36 px-2 py-2 font-medium">Status</th>
-              <th scope="col" className="w-20 px-2 py-2 text-right font-medium">
-                Reach <span className="font-normal opacity-70">/10</span>
-              </th>
-              <th scope="col" className="w-20 px-2 py-2 text-right font-medium">
-                Impact <span className="font-normal opacity-70">/10</span>
-              </th>
-              <th scope="col" className="w-24 px-2 py-2 font-medium">Confidence</th>
-              <th scope="col" className="w-20 px-2 py-2 text-right font-medium">
-                Effort <span className="font-normal opacity-70">/10</span>
-              </th>
-              <th scope="col" className="w-24 px-2 py-2 text-right font-medium">RICE</th>
+              <th scope="col" className="w-36 px-2 py-2 font-medium">Scoring</th>
+              <th scope="col" className="w-36 px-2 py-2 font-medium">Score</th>
               <th scope="col" className="w-36 px-2 py-2 font-medium">Last edited</th>
               <th scope="col" className="w-20 px-2 py-2"><span className="sr-only">Actions</span></th>
             </tr>
@@ -193,7 +212,7 @@ export function TableView() {
               const locked = !isAdmin && (node.type === 'goal' || node.type === 'outcome')
               const update = (fields: Parameters<typeof patchNode>[1] & { op: 'update' }) =>
                 patchNode(node.id, fields)
-              const score = riceScore(node)
+              const method = effectiveMethod(node)
               const childTypes = canAddChild(node.type, isAdmin)
               return (
                 <tr
@@ -240,18 +259,30 @@ export function TableView() {
                       ))}
                     </NativeSelect>
                   </td>
-                  {RICE_FIELDS.map(({ key }) => (
-                    <td key={key} className="px-2 py-1.5">
-                      <RiceInput
-                        field={key}
-                        node={node}
-                        disabled={locked}
-                        onCommit={(v) => update({ op: 'update', fields: { [key]: v } })}
-                      />
-                    </td>
-                  ))}
-                  <td className="px-2 py-1.5 text-right">
-                    {score != null ? <ScoreChip score={score} /> : <span className="text-muted-foreground">—</span>}
+                  <td className="px-2 py-1.5">
+                    <NativeSelect
+                      aria-label="Scoring method"
+                      value={method}
+                      disabled={locked}
+                      onChange={(e) => update({ op: 'update', fields: { scoringMethod: e.target.value as ScoringMethod } })}
+                    >
+                      {SCORING_METHODS.map((m) => (
+                        <option key={m} value={m}>
+                          {METHOD_LABEL[m]}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <button
+                      type="button"
+                      onClick={() => select(node.id)}
+                      aria-label={`Edit ${METHOD_LABEL[method]} scoring for ${node.title}`}
+                      className="flex min-h-8 w-full items-center rounded-md px-1 text-left hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/30"
+                    >
+                      <MethodChip node={node} />
+                      {!isScored(node) && <span className="text-muted-foreground">—</span>}
+                    </button>
                   </td>
                   <td className="px-2 py-1.5 text-xs text-muted-foreground">
                     <span className="block truncate">{memberName(node.updatedBy)}</span>
@@ -300,7 +331,7 @@ export function TableView() {
         {rows.length === 0 && (
           <p className="p-8 text-center text-sm text-pretty text-muted-foreground">
             {ranked
-              ? 'Nothing scored yet. Fill in Reach, Impact, Confidence and Effort on any item to rank it here.'
+              ? `Nothing scored with ${METHOD_LABEL[rankMethod]} yet. Open an item and score it with that method to rank it here.`
               : 'No items match these filters.'}
           </p>
         )}
