@@ -18,6 +18,9 @@ import { HttpError, auditInsert, newId, requireMember, toTreeNode, type RequestC
 
 const ADMIN_ONLY_TYPES: NodeType[] = ['goal', 'outcome']
 
+// Payload guard only. Four 1000-char notes can JSON-escape to ~24k; notes are length-checked when parsed.
+const MAX_ASSESSMENT_JSON = 30_000
+
 const outOfTen = z.number().min(0, 'Use 0–10').max(RICE_MAX, 'Use 0–10').nullable()
 
 const editableFields = {
@@ -37,7 +40,7 @@ const editableFields = {
   scoringMethod: z.enum(SCORING_METHODS).nullable(),
   assessment: z
     .string()
-    .max(6000)
+    .max(MAX_ASSESSMENT_JSON)
     .refine(isValidAssessment, 'Invalid assessment')
     .nullable(),
 }

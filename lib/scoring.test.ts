@@ -30,6 +30,13 @@ describe('effectiveMethod', () => {
     expect(effectiveMethod({ ...base, type: 'opportunity' })).toBe('assessment')
     expect(effectiveMethod(base)).toBe('rice')
   })
+  it('keeps impact and effort visible on opportunities scored before this existed', () => {
+    expect(effectiveMethod({ ...base, type: 'opportunity', impact: 6 })).toBe('impact_effort')
+    expect(effectiveMethod({ ...base, type: 'opportunity', effort: 2 })).toBe('impact_effort')
+    // RICE wins when RICE-only fields are present, and non-opportunities stay on RICE.
+    expect(effectiveMethod({ ...base, type: 'opportunity', impact: 6, reach: 5 })).toBe('rice')
+    expect(effectiveMethod({ ...base, impact: 6 })).toBe('rice')
+  })
   it('keeps RICE for opportunities that were already RICE-scored', () => {
     expect(effectiveMethod({ ...base, type: 'opportunity', reach: 5 })).toBe('rice')
     expect(effectiveMethod({ ...base, type: 'opportunity', confidence: 50 })).toBe('rice')
@@ -120,6 +127,21 @@ describe('patchNodeSchema', () => {
     const valid = { ...emptyAssessment(), size: { note: 'x', confidence: 'strong' as const } }
     expect(parse({ assessment: serializeAssessment(valid) }).success).toBe(true)
     expect(parse({ assessment: null }).success).toBe(true)
+  })
+  it('accepts four maximum-length notes even when JSON escaping inflates them', () => {
+    const long = { note: '\n'.repeat(1000), confidence: 'weak' as const }
+    const raw = serializeAssessment({ size: long, market: long, company: long, customer: long })!
+    expect(raw.length).toBeGreaterThan(6000)
+    expect(parse({ assessment: raw }).success).toBe(true)
+  })
+  it('only stores the canonical form of an assessment', () => {
+    const canonical = serializeAssessment({ ...emptyAssessment(), size: { note: 'x', confidence: 'strong' } })!
+    expect(parse({ assessment: canonical }).success).toBe(true)
+    expect(parse({ assessment: '{}' }).success).toBe(false)
+    expect(parse({ assessment: canonical.replace('"note":"x"', '"extra":1,"note":"x"') }).success).toBe(false)
+    expect(parse({ assessment: ` ${canonical}` }).success).toBe(false)
+    // An all-blank assessment is stored as null, never as a blank blob.
+    expect(parse({ assessment: JSON.stringify(emptyAssessment()) }).success).toBe(false)
   })
   it('rejects unknown methods and invalid assessments', () => {
     expect(parse({ scoringMethod: 'moscow' }).success).toBe(false)

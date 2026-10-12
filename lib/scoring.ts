@@ -76,8 +76,10 @@ export function serializeAssessment(a: Assessment): string | null {
   return JSON.stringify(Object.fromEntries(ASSESSMENT_FACTORS.map((f) => [f, a[f]])))
 }
 
+/** Write-side check: only the exact canonical form we store is accepted. */
 export function isValidAssessment(raw: string): boolean {
-  return parseAssessment(raw) !== null
+  const parsed = parseAssessment(raw)
+  return parsed !== null && serializeAssessment(parsed) === raw
 }
 
 type MethodFields = Pick<
@@ -85,11 +87,14 @@ type MethodFields = Pick<
   'type' | 'scoringMethod' | 'reach' | 'impact' | 'confidence' | 'effort'
 >
 
-/** Opportunities start on Assessment; anything already RICE-scored keeps RICE. */
+/** Opportunities start on Assessment; anything already scored keeps the method its numbers fit. */
 export function effectiveMethod(n: MethodFields): ScoringMethod {
   if (n.scoringMethod) return n.scoringMethod
   if (n.reach != null || n.confidence != null) return 'rice'
-  return defaultMethod(n.type)
+  const fallback = defaultMethod(n.type)
+  // Opportunities now default to assessment; don't hide numbers already entered.
+  if (fallback === 'assessment' && (n.impact != null || n.effort != null)) return 'impact_effort'
+  return fallback
 }
 
 export function defaultMethod(type: NodeType): ScoringMethod {

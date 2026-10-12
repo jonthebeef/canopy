@@ -102,6 +102,9 @@ export function ScoringSection({
   update: Update
 }) {
   const method = effectiveMethod(node)
+  // An unsaved method is inferred from the data. Save it with the first edit so
+  // clearing a value can't flip the panel to another method mid-edit.
+  const save: Update = (fields) => update(node.scoringMethod ? fields : { scoringMethod: method, ...fields })
 
   return (
     <section aria-labelledby="scoring-heading" className="flex flex-col gap-3 rounded-lg border p-3">
@@ -120,8 +123,17 @@ export function ScoringSection({
             id={`scoring-tab-${m}`}
             aria-selected={method === m}
             aria-controls="scoring-panel"
+            tabIndex={method === m ? 0 : -1}
             disabled={locked}
             onClick={() => update({ scoringMethod: m })}
+            onKeyDown={(e) => {
+              const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0
+              if (!step) return
+              e.preventDefault()
+              const next = SCORING_METHODS[(SCORING_METHODS.indexOf(m) + step + SCORING_METHODS.length) % SCORING_METHODS.length]
+              update({ scoringMethod: next })
+              document.getElementById(`scoring-tab-${next}`)?.focus()
+            }}
             className={cn(
               'h-7 flex-1 rounded px-2 text-xs font-medium text-muted-foreground transition-colors disabled:opacity-60',
               method === m && 'bg-card text-foreground shadow-sm',
@@ -132,9 +144,9 @@ export function ScoringSection({
         ))}
       </div>
       <div id="scoring-panel" role="tabpanel" aria-labelledby={`scoring-tab-${method}`} className="flex flex-col gap-3">
-        {method === 'rice' && <RicePanel node={node} locked={locked} update={update} />}
-        {method === 'impact_effort' && <ImpactEffortPanel node={node} locked={locked} update={update} />}
-        {method === 'assessment' && <AssessmentPanel node={node} locked={locked} update={update} />}
+        {method === 'rice' && <RicePanel node={node} locked={locked} update={save} />}
+        {method === 'impact_effort' && <ImpactEffortPanel node={node} locked={locked} update={save} />}
+        {method === 'assessment' && <AssessmentPanel node={node} locked={locked} update={save} />}
       </div>
     </section>
   )
@@ -244,6 +256,7 @@ function AssessmentPanel({ node, locked, update }: { node: TreeNode; locked: boo
               multiline
               aria-label={`${FACTOR_LABEL[factor]} notes`}
               placeholder="What do we know, and how do we know it?"
+              maxLength={NOTE_MAX}
               value={note}
               disabled={locked}
               onCommit={(v) => change(factor, { note: v.slice(0, NOTE_MAX) })}

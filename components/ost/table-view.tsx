@@ -58,7 +58,8 @@ export function TableView() {
     if (ranked) {
       const scoredRows = list.filter((r) => methodScore(r.node, rankMethod) != null)
       scoredRows.sort((a, b) => methodScore(b.node, rankMethod)! - methodScore(a.node, rankMethod)!)
-      return { rows: scoredRows, unscored: list.length - scoredRows.length }
+      const onMethod = list.filter((r) => effectiveMethod(r.node) === rankMethod).length
+      return { rows: scoredRows, unscored: onMethod - scoredRows.length }
     }
     if (sort !== 'tree') {
       const dir = desc ? -1 : 1
@@ -185,7 +186,7 @@ export function TableView() {
         </div>
         <p className="ml-auto font-mono text-xs text-muted-foreground">
           {ranked
-            ? `${rows.length} ranked${unscored ? ` · ${unscored} unscored hidden` : ''}`
+            ? `${rows.length} ranked${unscored ? ` · ${unscored} on ${METHOD_LABEL[rankMethod]} not yet scored` : ''}`
             : `${rows.length} items · ${scored} scored`}
         </p>
       </div>
