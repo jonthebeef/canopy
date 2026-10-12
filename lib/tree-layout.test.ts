@@ -15,6 +15,8 @@ function node(id: string, parentId: string | null, sortOrder: number): TreeNode 
     impact: null,
     confidence: null,
     effort: null,
+    scoringMethod: null,
+    assessment: null,
     sortOrder,
     archivedAt: null,
     archivedBy: null,

@@ -16,6 +16,14 @@ import {
   type EvidenceKind,
 } from '@/lib/ost'
 import {
+  ASSESSMENT_FACTORS,
+  FACTOR_LABEL,
+  METHOD_LABEL,
+  effectiveMethod,
+  impactEffortScore,
+  parseAssessment,
+} from '@/lib/scoring'
+import {
   HttpError,
   auditInsert,
   listMyWorkspaces,
@@ -381,14 +389,17 @@ app.get('/api/w/:id/export', (c) =>
       evidenceByNode.set(evidence.nodeId, [...(evidenceByNode.get(evidence.nodeId) ?? []), line])
     }
     const header = [
-      'ID', 'Type', 'Title', 'Path', 'Status', 'Reach', 'Impact', 'Confidence %', 'Effort',
-      'RICE score', 'Description', 'Evidence count', 'Evidence', 'Created by', 'Created at',
+      'ID', 'Type', 'Title', 'Path', 'Status', 'Scoring method', 'Reach', 'Impact', 'Confidence %', 'Effort',
+      'RICE score', 'Impact / effort', 'Assessment', 'Description', 'Evidence count', 'Evidence', 'Created by', 'Created at',
       'Updated by', 'Updated at', 'Archived at', 'Archive reason',
     ]
     const lines = nodes
       .filter((node) => includeArchived || !isEffectivelyArchived(node.id, byId))
       .map((node) => {
-        const score = riceScore(node)
+        const method = effectiveMethod(node)
+        const score = method === 'rice' ? riceScore(node) : null
+        const ie = method === 'impact_effort' ? impactEffortScore(node) : null
+        const assessment = parseAssessment(node.assessment)
         const evidence = evidenceByNode.get(node.id) ?? []
         return [
           node.id,
@@ -396,11 +407,18 @@ app.get('/api/w/:id/export', (c) =>
           node.title,
           ancestry(node.id, byId).map((ancestor) => ancestor.title).join(' › '),
           STATUS_LABEL[node.status],
+          METHOD_LABEL[method],
           node.reach,
           node.impact,
           node.confidence,
           node.effort,
           score == null ? '' : score.toFixed(2),
+          ie == null ? '' : ie.toFixed(2),
+          assessment
+            ? ASSESSMENT_FACTORS.filter((f) => assessment[f].confidence || assessment[f].note)
+                .map((f) => `${FACTOR_LABEL[f]} [${assessment[f].confidence ?? 'not rated'}]: ${assessment[f].note}`)
+                .join('\n')
+            : '',
           node.description,
           evidence.length,
           evidence.join('\n'),

@@ -130,6 +130,7 @@ export function CommitText({
         aria-label={props['aria-label']}
         placeholder={props.placeholder}
         disabled={props.disabled}
+        maxLength={props.maxLength}
         rows={4}
         onChange={(e) => setDraft(e.target.value)}
         className={cn(shared.className, 'resize-y leading-relaxed')}
