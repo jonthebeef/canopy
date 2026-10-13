@@ -39,18 +39,36 @@ export const STATUS_LABEL: Record<NodeStatus, string> = {
 }
 
 /**
- * Which node types may sit directly under each parent type. An insight is a
- * user need called out by research; it is a leaf, so nothing hangs beneath it.
+ * The types a card most often has beneath it, in the order the add dialog offers
+ * them (the first is the default). This is guidance, not a rule: see ALLOWED_CHILDREN.
  */
-export const ALLOWED_CHILDREN: Record<NodeType, NodeType[]> = {
+const SUGGESTED_CHILDREN: Record<NodeType, NodeType[]> = {
   goal: ['outcome'],
   outcome: ['question', 'insight', 'opportunity'],
   question: ['question', 'insight', 'opportunity', 'solution', 'experiment'],
-  insight: [],
+  insight: ['opportunity', 'question', 'insight'],
   opportunity: ['question', 'insight', 'opportunity', 'solution'],
   solution: ['question', 'experiment'],
-  experiment: [],
+  experiment: ['insight', 'question'],
 }
+
+/**
+ * Which node types may sit directly under each parent type. The tree is
+ * open-ended: no type is the bottom, and any card can go under any other so a
+ * trio can work the way suits them. The goal is the single root, so it is never
+ * a child, and it only takes outcomes. The suggested children come first.
+ */
+export const ALLOWED_CHILDREN = Object.fromEntries(
+  NODE_TYPES.map((parent) => [
+    parent,
+    parent === 'goal'
+      ? SUGGESTED_CHILDREN.goal
+      : [
+          ...SUGGESTED_CHILDREN[parent],
+          ...NODE_TYPES.filter((t) => t !== 'goal' && !SUGGESTED_CHILDREN[parent].includes(t)),
+        ],
+  ]),
+) as Record<NodeType, NodeType[]>
 
 export type RiceKey = 'reach' | 'impact' | 'confidence' | 'effort'
 

@@ -109,7 +109,7 @@ function GoalSection() {
   const [showArchived, setShowArchived] = useState(false)
   const goal = state.nodes.find((n) => n.type === 'goal' && !n.parentId)
   const outcomes = state.nodes
-    .filter((n) => n.type === 'outcome' && n.parentId === goal?.id)
+    .filter((n) => n.type === 'outcome')
     .filter((n) => showArchived || !n.archivedAt)
     .sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt)
   const archivedCount = state.nodes.filter((n) => n.type === 'outcome' && n.archivedAt).length

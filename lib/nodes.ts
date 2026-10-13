@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { schema } from '@/lib/db'
 import type { AuditChanges } from '@/lib/db/schema'
+import { moveError } from '@/lib/tree'
 import { sortOrderBefore } from '@/lib/tree-order'
 import {
   ALLOWED_CHILDREN,
@@ -68,7 +69,7 @@ export const patchNodeSchema = z.discriminatedUnion('op', [
 
 type FieldName = keyof typeof editableFields
 
-function assertCanEdit(role: 'admin' | 'member', type: NodeType) {
+export function assertCanEdit(role: 'admin' | 'member', type: NodeType) {
   if (role !== 'admin' && ADMIN_ONLY_TYPES.includes(type)) {
     throw new HttpError(403, `Only the workspace admin can change the ${TYPE_LABEL[type].toLowerCase()}`)
   }
@@ -175,26 +176,14 @@ export async function patchNode(
   }
 
   if (input.op === 'move') {
-    if (current.type === 'goal') throw new HttpError(400, 'The goal is the root of the tree')
-    if (input.parentId === nodeId) throw new HttpError(400, "An item can't be its own parent")
     const target = await getNodeInWorkspace(db, workspaceId, input.parentId)
-    if (!ALLOWED_CHILDREN[target.type].includes(current.type)) {
-      throw new HttpError(
-        400,
-        `A ${TYPE_LABEL[current.type].toLowerCase()} can't sit under a ${TYPE_LABEL[target.type].toLowerCase()}`,
-      )
-    }
-    // Reject moves that would put a node underneath its own descendant.
     const all = await db
       .select({ id: schema.node.id, parentId: schema.node.parentId, title: schema.node.title })
       .from(schema.node)
       .where(eq(schema.node.workspaceId, workspaceId))
+    const problem = moveError(current, target, all)
+    if (problem) throw new HttpError(400, problem)
     const byId = new Map(all.map((n) => [n.id, n]))
-    let cursor: string | null | undefined = target.id
-    while (cursor) {
-      if (cursor === nodeId) throw new HttpError(400, "Can't move an item underneath itself")
-      cursor = byId.get(cursor)?.parentId
-    }
     const fromTitle = current.parentId ? (byId.get(current.parentId)?.title ?? null) : null
 
     const [[row]] = await db.batch([
