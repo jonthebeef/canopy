@@ -51,6 +51,7 @@
   --color-score: var(--score);
   --color-score-foreground: var(--score-foreground);
   --color-canvas: var(--canvas);
+  --color-logo: var(--logo);
 }
 
 :root {
@@ -73,6 +74,7 @@
   --border: oklch(0.9 0.01 160);
   --input: oklch(0.88 0.012 160);
   --ring: oklch(0.46 0.095 160);
+  --logo: #1b4332;
   --score: oklch(0.83 0.13 80);
   --score-foreground: oklch(0.3 0.06 60);
   --canvas: oklch(0.965 0.006 155);

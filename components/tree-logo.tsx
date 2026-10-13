@@ -1,0 +1,30 @@
+/**
+ * The Canopy mark: a full oak with wide, spreading branches, drawn in a single colour
+ * (`currentColor`). The same artwork is public/icon.svg, which the favicons are made from.
+ */
+export function TreeLogo({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 100 100" fill="currentColor" aria-hidden="true" focusable="false" className={className}>
+      <path d="M33 97C42 95 45 88 45 78V58H55V78C55 88 58 95 67 97Z" />
+      <g fill="none" stroke="currentColor" strokeLinecap="round">
+        <path d="M49 70C46 58 35 52 22 44" strokeWidth="7" />
+        <path d="M51 70C54 58 65 52 78 44" strokeWidth="7" />
+        <path d="M50 62V38" strokeWidth="6" />
+        <path d="M47 79C39 76 26 72 13 63" strokeWidth="5" />
+        <path d="M53 79C61 76 74 72 87 63" strokeWidth="5" />
+      </g>
+      <circle cx="50" cy="24" r="14" />
+      <circle cx="32" cy="28" r="13" />
+      <circle cx="68" cy="28" r="13" />
+      <circle cx="16" cy="39" r="12" />
+      <circle cx="84" cy="39" r="12" />
+      <circle cx="36" cy="38" r="12" />
+      <circle cx="64" cy="38" r="12" />
+      <circle cx="50" cy="39" r="12" />
+      <circle cx="10" cy="53" r="8" />
+      <circle cx="90" cy="53" r="8" />
+      <circle cx="23" cy="51" r="9" />
+      <circle cx="77" cy="51" r="9" />
+    </svg>
+  )
+}
