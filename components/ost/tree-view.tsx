@@ -430,7 +430,9 @@ function TreeCanvas() {
               ? 'var(--primary)'
               : type === 'question'
                 ? 'oklch(0.7 0.1 230)'
-                : type === 'solution'
+                : type === 'insight'
+                  ? 'oklch(0.82 0.13 85)'
+                  : type === 'solution'
                   ? 'var(--score)'
                   : 'var(--border)'
         }}

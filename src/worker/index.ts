@@ -21,6 +21,7 @@ import {
   METHOD_LABEL,
   effectiveMethod,
   impactEffortScore,
+  isScorable,
   parseAssessment,
 } from '@/lib/scoring'
 import {
@@ -407,7 +408,7 @@ app.get('/api/w/:id/export', (c) =>
           node.title,
           ancestry(node.id, byId).map((ancestor) => ancestor.title).join(' › '),
           STATUS_LABEL[node.status],
-          METHOD_LABEL[method],
+          isScorable(node.type) ? METHOD_LABEL[method] : '',
           node.reach,
           node.impact,
           node.confidence,

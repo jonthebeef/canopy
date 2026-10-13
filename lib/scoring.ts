@@ -97,6 +97,11 @@ export function effectiveMethod(n: MethodFields): ScoringMethod {
   return fallback
 }
 
+/** Insights record a user need; they aren't prioritised, so they carry no score. */
+export function isScorable(type: NodeType): boolean {
+  return type !== 'insight'
+}
+
 export function defaultMethod(type: NodeType): ScoringMethod {
   return type === 'opportunity' ? 'assessment' : 'rice'
 }

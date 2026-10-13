@@ -4,6 +4,7 @@ export const NODE_TYPES = [
   'goal',
   'outcome',
   'question',
+  'insight',
   'opportunity',
   'solution',
   'experiment',
@@ -23,6 +24,7 @@ export const TYPE_LABEL: Record<NodeType, string> = {
   goal: 'Goal',
   outcome: 'Outcome',
   question: 'How might we',
+  insight: 'Insight',
   opportunity: 'Opportunity',
   solution: 'Solution',
   experiment: 'Experiment',
@@ -36,12 +38,16 @@ export const STATUS_LABEL: Record<NodeStatus, string> = {
   parked: 'Parked',
 }
 
-/** Which node types may sit directly under each parent type. */
+/**
+ * Which node types may sit directly under each parent type. An insight is a
+ * user need called out by research; it is a leaf, so nothing hangs beneath it.
+ */
 export const ALLOWED_CHILDREN: Record<NodeType, NodeType[]> = {
   goal: ['outcome'],
-  outcome: ['question', 'opportunity'],
-  question: ['question', 'opportunity', 'solution', 'experiment'],
-  opportunity: ['question', 'opportunity', 'solution'],
+  outcome: ['question', 'insight', 'opportunity'],
+  question: ['question', 'insight', 'opportunity', 'solution', 'experiment'],
+  insight: [],
+  opportunity: ['question', 'insight', 'opportunity', 'solution'],
   solution: ['question', 'experiment'],
   experiment: [],
 }

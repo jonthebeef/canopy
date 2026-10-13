@@ -16,6 +16,7 @@ import {
   RANKABLE_METHODS,
   SCORING_METHODS,
   effectiveMethod,
+  isScorable,
   isScored,
   methodScore,
   type RankableMethod,
@@ -260,31 +261,39 @@ export function TableView() {
                       ))}
                     </NativeSelect>
                   </td>
-                  <td className="px-2 py-1.5">
-                    <NativeSelect
-                      aria-label="Scoring method"
-                      value={method}
-                      disabled={locked}
-                      onChange={(e) => update({ op: 'update', fields: { scoringMethod: e.target.value as ScoringMethod } })}
-                    >
-                      {SCORING_METHODS.map((m) => (
-                        <option key={m} value={m}>
-                          {METHOD_LABEL[m]}
-                        </option>
-                      ))}
-                    </NativeSelect>
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <button
-                      type="button"
-                      onClick={() => select(node.id)}
-                      aria-label={`Edit ${METHOD_LABEL[method]} scoring for ${node.title}`}
-                      className="flex min-h-8 w-full items-center rounded-md px-1 text-left hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/30"
-                    >
-                      <MethodChip node={node} />
-                      {!isScored(node) && <span className="text-muted-foreground">—</span>}
-                    </button>
-                  </td>
+                  {isScorable(node.type) ? (
+                    <>
+                    <td className="px-2 py-1.5">
+                      <NativeSelect
+                        aria-label="Scoring method"
+                        value={method}
+                        disabled={locked}
+                        onChange={(e) => update({ op: 'update', fields: { scoringMethod: e.target.value as ScoringMethod } })}
+                      >
+                        {SCORING_METHODS.map((m) => (
+                          <option key={m} value={m}>
+                            {METHOD_LABEL[m]}
+                          </option>
+                        ))}
+                      </NativeSelect>
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <button
+                        type="button"
+                        onClick={() => select(node.id)}
+                        aria-label={`Edit ${METHOD_LABEL[method]} scoring for ${node.title}`}
+                        className="flex min-h-8 w-full items-center rounded-md px-1 text-left hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/30"
+                      >
+                        <MethodChip node={node} />
+                        {!isScored(node) && <span className="text-muted-foreground">—</span>}
+                      </button>
+                    </td>
+                    </>
+                  ) : (
+                    <td colSpan={2} className="px-2 py-1.5 text-xs text-muted-foreground">
+                      Not scored
+                    </td>
+                  )}
                   <td className="px-2 py-1.5 text-xs text-muted-foreground">
                     <span className="block truncate">{memberName(node.updatedBy)}</span>
                     <time dateTime={new Date(node.updatedAt).toISOString()}>
