@@ -152,8 +152,9 @@ function NodeDetails({ node }: { node: TreeNode }) {
             value={node.parentId}
             onChange={(e) => patchNode(node.id, { op: 'move', parentId: e.target.value })}
           >
-            {parents.map((p) => (
+            {parents.map(({ node: p, depth }) => (
               <option key={p.id} value={p.id}>
+                {'\u00A0\u00A0'.repeat(depth)}
                 {TYPE_LABEL[p.type]}: {p.title}
               </option>
             ))}

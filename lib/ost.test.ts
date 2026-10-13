@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { createNodeSchema } from './nodes'
+import { assertCanEdit, createNodeSchema } from './nodes'
 import { ALLOWED_CHILDREN, NODE_TYPES, TYPE_LABEL } from './ost'
 import { isScorable, rejectedScoringFields } from './scoring'
-import { canAddChild, validNewParents } from './tree'
+import { canAddChild, moveError, validNewParents } from './tree'
 import type { TreeNode } from './ost'
 
 describe('insight node type', () => {
@@ -120,7 +120,7 @@ describe('moving cards in an open-ended tree', () => {
     card('ins2', 'insight', 'exp'),
     card('opp2', 'opportunity', 'out'),
   ]
-  const parentIds = (id: string) => validNewParents(nodes.find((n) => n.id === id)!, nodes).map((n) => n.id)
+  const parentIds = (id: string) => validNewParents(nodes.find((n) => n.id === id)!, nodes).map((r) => r.node.id)
 
   it('allows moving a card under an insight or an experiment', () => {
     expect(parentIds('opp2')).toEqual(expect.arrayContaining(['ins', 'exp', 'ins2']))
@@ -137,5 +137,82 @@ describe('moving cards in an open-ended tree', () => {
 
   it('never offers the goal as something to move under a card', () => {
     expect(parentIds('goal')).toEqual([])
+  })
+})
+
+describe('the server move rule (moveError)', () => {
+  const tree = [
+    { id: 'goal', parentId: null },
+    { id: 'out', parentId: 'goal' },
+    { id: 'opp', parentId: 'out' },
+    { id: 'exp', parentId: 'opp' },
+    { id: 'ins', parentId: 'exp' },
+    { id: 'other', parentId: 'out' },
+  ]
+  const t = (id: string, type: TreeNode['type']) => ({ id, type })
+
+  it('allows a legal move, including under an insight or an experiment', () => {
+    expect(moveError(t('other', 'opportunity'), t('ins', 'insight'), tree)).toBeNull()
+    expect(moveError(t('other', 'opportunity'), t('exp', 'experiment'), tree)).toBeNull()
+  })
+
+  it('never moves the goal', () => {
+    expect(moveError(t('goal', 'goal'), t('out', 'outcome'), tree)).toMatch(/root/)
+  })
+
+  it('never puts anything under the goal except an outcome', () => {
+    expect(moveError(t('opp', 'opportunity'), t('goal', 'goal'), tree)).toMatch(/can't sit under/)
+    expect(moveError(t('out', 'outcome'), t('goal', 'goal'), tree)).toBeNull()
+  })
+
+  it("refuses to make a card its own parent or put it under its own descendant", () => {
+    expect(moveError(t('opp', 'opportunity'), t('opp', 'opportunity'), tree)).toMatch(/own parent/)
+    expect(moveError(t('opp', 'opportunity'), t('ins', 'insight'), tree)).toMatch(/underneath itself/)
+    expect(moveError(t('opp', 'opportunity'), t('exp', 'experiment'), tree)).toMatch(/underneath itself/)
+  })
+
+  it('terminates on corrupt data that already contains a cycle', () => {
+    const looped = [{ id: 'a', parentId: 'b' }, { id: 'b', parentId: 'a' }, { id: 'c', parentId: null }]
+    expect(moveError(t('c', 'opportunity'), t('a', 'opportunity'), looped)).toBeNull()
+  })
+})
+
+describe('who may edit which cards (assertCanEdit)', () => {
+  it('lets only the admin change the goal and outcomes', () => {
+    expect(() => assertCanEdit('member', 'goal')).toThrow()
+    expect(() => assertCanEdit('member', 'outcome')).toThrow()
+    expect(() => assertCanEdit('admin', 'goal')).not.toThrow()
+    expect(() => assertCanEdit('admin', 'outcome')).not.toThrow()
+  })
+
+  it('lets contributors edit every other type', () => {
+    for (const type of NODE_TYPES.filter((x) => x !== 'goal' && x !== 'outcome')) {
+      expect(() => assertCanEdit('member', type)).not.toThrow()
+    }
+  })
+})
+
+describe('the "Sits under" list (validNewParents)', () => {
+  const card = (id: string, type: TreeNode['type'], parentId: string | null, over: Partial<TreeNode> = {}): TreeNode => ({
+    id, workspaceId: 'w', parentId, type, title: id, description: '', status: 'exploring',
+    reach: null, impact: null, confidence: null, effort: null, scoringMethod: null, assessment: null,
+    sortOrder: 0, archivedAt: null, archivedBy: null, archiveReason: null,
+    createdBy: 'u', createdAt: 0, updatedBy: 'u', updatedAt: 0, ...over,
+  })
+
+  it('lists cards in tree order with their depth, and hides archived cards and everything beneath them', () => {
+    const nodes = [
+      card('goal', 'goal', null),
+      card('out', 'outcome', 'goal'),
+      card('a', 'opportunity', 'out', { sortOrder: 1 }),
+      card('a-child', 'insight', 'a'),
+      card('b', 'opportunity', 'out', { sortOrder: 2 }),
+      card('gone', 'opportunity', 'out', { sortOrder: 3, archivedAt: 1 }),
+      card('gone-child', 'insight', 'gone'),
+      card('mover', 'question', 'out', { sortOrder: 4 }),
+    ]
+    const rows = validNewParents(nodes.find((n) => n.id === 'mover')!, nodes)
+    expect(rows.map((r) => r.node.id)).toEqual(['out', 'a', 'a-child', 'b'])
+    expect(rows.map((r) => r.depth)).toEqual([1, 2, 3, 2])
   })
 })
