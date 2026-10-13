@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { assertCanEdit, createNodeSchema } from './nodes'
 import { ALLOWED_CHILDREN, NODE_TYPES, TYPE_LABEL } from './ost'
 import { isScorable, rejectedScoringFields } from './scoring'
-import { canAddChild, moveError, validNewParents } from './tree'
+import { canAddChild, moveError, parentMap, sitsUnderOptions, validNewParents } from './tree'
 import type { TreeNode } from './ost'
 
 describe('insight node type', () => {
@@ -149,31 +149,32 @@ describe('the server move rule (moveError)', () => {
     { id: 'ins', parentId: 'exp' },
     { id: 'other', parentId: 'out' },
   ]
+  const parents = parentMap(tree)
   const t = (id: string, type: TreeNode['type']) => ({ id, type })
 
   it('allows a legal move, including under an insight or an experiment', () => {
-    expect(moveError(t('other', 'opportunity'), t('ins', 'insight'), tree)).toBeNull()
-    expect(moveError(t('other', 'opportunity'), t('exp', 'experiment'), tree)).toBeNull()
+    expect(moveError(t('other', 'opportunity'), t('ins', 'insight'), parents)).toBeNull()
+    expect(moveError(t('other', 'opportunity'), t('exp', 'experiment'), parents)).toBeNull()
   })
 
   it('never moves the goal', () => {
-    expect(moveError(t('goal', 'goal'), t('out', 'outcome'), tree)).toMatch(/root/)
+    expect(moveError(t('goal', 'goal'), t('out', 'outcome'), parents)).toMatch(/root/)
   })
 
   it('never puts anything under the goal except an outcome', () => {
-    expect(moveError(t('opp', 'opportunity'), t('goal', 'goal'), tree)).toMatch(/can't sit under/)
-    expect(moveError(t('out', 'outcome'), t('goal', 'goal'), tree)).toBeNull()
+    expect(moveError(t('opp', 'opportunity'), t('goal', 'goal'), parents)).toMatch(/can't sit under/)
+    expect(moveError(t('out', 'outcome'), t('goal', 'goal'), parents)).toBeNull()
   })
 
   it("refuses to make a card its own parent or put it under its own descendant", () => {
-    expect(moveError(t('opp', 'opportunity'), t('opp', 'opportunity'), tree)).toMatch(/own parent/)
-    expect(moveError(t('opp', 'opportunity'), t('ins', 'insight'), tree)).toMatch(/underneath itself/)
-    expect(moveError(t('opp', 'opportunity'), t('exp', 'experiment'), tree)).toMatch(/underneath itself/)
+    expect(moveError(t('opp', 'opportunity'), t('opp', 'opportunity'), parents)).toMatch(/own parent/)
+    expect(moveError(t('opp', 'opportunity'), t('ins', 'insight'), parents)).toMatch(/underneath itself/)
+    expect(moveError(t('opp', 'opportunity'), t('exp', 'experiment'), parents)).toMatch(/underneath itself/)
   })
 
   it('terminates on corrupt data that already contains a cycle', () => {
     const looped = [{ id: 'a', parentId: 'b' }, { id: 'b', parentId: 'a' }, { id: 'c', parentId: null }]
-    expect(moveError(t('c', 'opportunity'), t('a', 'opportunity'), looped)).toBeNull()
+    expect(moveError(t('c', 'opportunity'), t('a', 'opportunity'), parentMap(looped))).toBeNull()
   })
 })
 
@@ -214,5 +215,51 @@ describe('the "Sits under" list (validNewParents)', () => {
     const rows = validNewParents(nodes.find((n) => n.id === 'mover')!, nodes)
     expect(rows.map((r) => r.node.id)).toEqual(['out', 'a', 'a-child', 'b'])
     expect(rows.map((r) => r.depth)).toEqual([1, 2, 3, 2])
+  })
+})
+
+describe('sitsUnderOptions', () => {
+  const card = (id: string, type: TreeNode['type'], parentId: string | null, over: Partial<TreeNode> = {}): TreeNode => ({
+    id, workspaceId: 'w', parentId, type, title: id, description: '', status: 'exploring',
+    reach: null, impact: null, confidence: null, effort: null, scoringMethod: null, assessment: null,
+    sortOrder: 0, archivedAt: null, archivedBy: null, archiveReason: null,
+    createdBy: 'u', createdAt: 0, updatedBy: 'u', updatedAt: 0, ...over,
+  })
+
+  it('is just the legal parents when the current parent is visible', () => {
+    const nodes = [card('goal', 'goal', null), card('out', 'outcome', 'goal'), card('a', 'opportunity', 'out'), card('b', 'solution', 'a')]
+    const options = sitsUnderOptions(nodes[3], nodes)
+    expect(options.map((o) => o.node.id)).toEqual(['out', 'a'])
+    expect(options.every((o) => !o.hidden)).toBe(true)
+  })
+
+  it('still lists the current parent, flagged, when it is archived', () => {
+    const nodes = [
+      card('goal', 'goal', null),
+      card('out', 'outcome', 'goal'),
+      card('gone', 'opportunity', 'out', { archivedAt: 1 }),
+      card('kid', 'solution', 'gone'),
+    ]
+    const options = sitsUnderOptions(nodes[3], nodes)
+    expect(options[0]).toMatchObject({ hidden: true, depth: 0 })
+    expect(options[0].node.id).toBe('gone')
+    expect(options.slice(1).map((o) => o.node.id)).toEqual(['out'])
+  })
+
+  it('still lists the current parent when only an ancestor is archived', () => {
+    const nodes = [
+      card('goal', 'goal', null),
+      card('out', 'outcome', 'goal'),
+      card('gone', 'opportunity', 'out', { archivedAt: 1 }),
+      card('mid', 'opportunity', 'gone'),
+      card('kid', 'solution', 'mid'),
+    ]
+    const options = sitsUnderOptions(nodes[4], nodes)
+    expect(options.find((o) => o.node.id === 'mid')?.hidden).toBe(true)
+  })
+
+  it('has no current parent to add for the goal', () => {
+    const nodes = [card('goal', 'goal', null)]
+    expect(sitsUnderOptions(nodes[0], nodes)).toEqual([])
   })
 })

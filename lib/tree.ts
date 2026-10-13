@@ -44,21 +44,25 @@ export function descendantIds(nodeId: string, nodes: TreeNode[]) {
   return out
 }
 
+/** id -> parentId lookup, built once and shared across many `moveError` checks. */
+export function parentMap(nodes: Pick<TreeNode, 'id' | 'parentId'>[]) {
+  return new Map(nodes.map((n) => [n.id, n.parentId]))
+}
+
 /**
  * Why `node` can't be moved under `target`, or null if it can. The server enforces this
- * on every move; `nodes` needs only id and parentId so it can be a cheap column select.
+ * on every move; build `parentOf` once with `parentMap` (a cheap id/parentId select is enough).
  */
 export function moveError(
   node: Pick<TreeNode, 'id' | 'type'>,
   target: Pick<TreeNode, 'id' | 'type'>,
-  nodes: Pick<TreeNode, 'id' | 'parentId'>[],
+  parentOf: ReadonlyMap<string, string | null>,
 ): string | null {
   if (node.type === 'goal') return 'The goal is the root of the tree'
   if (target.id === node.id) return "An item can't be its own parent"
   if (!ALLOWED_CHILDREN[target.type].includes(node.type)) {
     return `A ${TYPE_LABEL[node.type].toLowerCase()} can't sit under a ${TYPE_LABEL[target.type].toLowerCase()}`
   }
-  const parentOf = new Map(nodes.map((n) => [n.id, n.parentId]))
   // Walk up from the target; meeting the node means the target is one of its descendants.
   const seen = new Set<string>()
   for (let cursor: string | null | undefined = target.id; cursor && !seen.has(cursor); cursor = parentOf.get(cursor)) {
@@ -73,7 +77,23 @@ export function moveError(
  * cards, and anything beneath one, are left out: a card moved there would vanish.
  */
 export function validNewParents(node: TreeNode, nodes: TreeNode[]) {
-  return flattenTree(nodes, false).filter(({ node: p }) => moveError(node, p, nodes) === null)
+  const parentOf = parentMap(nodes)
+  return flattenTree(nodes, false).filter(({ node: p }) => moveError(node, p, parentOf) === null)
+}
+
+export type SitsUnderOption = { node: TreeNode; depth: number; hidden: boolean }
+
+/**
+ * The "Sits under" choices: every legal parent, plus the card's current parent even when
+ * that parent is archived or hidden, so the select always shows where the card really is.
+ */
+export function sitsUnderOptions(node: TreeNode, nodes: TreeNode[]): SitsUnderOption[] {
+  const options = validNewParents(node, nodes).map(({ node: p, depth }) => ({ node: p, depth, hidden: false }))
+  const current = node.parentId ? nodes.find((n) => n.id === node.parentId) : undefined
+  if (current && !options.some((o) => o.node.id === current.id)) {
+    options.unshift({ node: current, depth: 0, hidden: true })
+  }
+  return options
 }
 
 export function canAddChild(parentType: NodeType, isAdmin: boolean) {
