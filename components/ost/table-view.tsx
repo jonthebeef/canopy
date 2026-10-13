@@ -16,6 +16,7 @@ import {
   RANKABLE_METHODS,
   SCORING_METHODS,
   effectiveMethod,
+  isScorable,
   isScored,
   methodScore,
   type RankableMethod,
@@ -58,7 +59,7 @@ export function TableView() {
     if (ranked) {
       const scoredRows = list.filter((r) => methodScore(r.node, rankMethod) != null)
       scoredRows.sort((a, b) => methodScore(b.node, rankMethod)! - methodScore(a.node, rankMethod)!)
-      const onMethod = list.filter((r) => effectiveMethod(r.node) === rankMethod).length
+      const onMethod = list.filter((r) => isScorable(r.node.type) && effectiveMethod(r.node) === rankMethod).length
       return { rows: scoredRows, unscored: onMethod - scoredRows.length }
     }
     if (sort !== 'tree') {
@@ -84,6 +85,7 @@ export function TableView() {
   }, [state.nodes, showArchived, typeFilter, statusFilter, sort, desc, query, ranked, rankMethod])
 
   const flat = !ranked && sort === 'tree'
+  const scorable = rows.filter((r) => isScorable(r.node.type)).length
   const scored = rows.filter((r) => isScored(r.node)).length
 
   return (
@@ -187,7 +189,7 @@ export function TableView() {
         <p className="ml-auto font-mono text-xs text-muted-foreground">
           {ranked
             ? `${rows.length} ranked${unscored ? ` · ${unscored} on ${METHOD_LABEL[rankMethod]} not yet scored` : ''}`
-            : `${rows.length} items · ${scored} scored`}
+            : `${rows.length} items · ${scored} of ${scorable} scorable scored`}
         </p>
       </div>
 
@@ -260,31 +262,39 @@ export function TableView() {
                       ))}
                     </NativeSelect>
                   </td>
-                  <td className="px-2 py-1.5">
-                    <NativeSelect
-                      aria-label="Scoring method"
-                      value={method}
-                      disabled={locked}
-                      onChange={(e) => update({ op: 'update', fields: { scoringMethod: e.target.value as ScoringMethod } })}
-                    >
-                      {SCORING_METHODS.map((m) => (
-                        <option key={m} value={m}>
-                          {METHOD_LABEL[m]}
-                        </option>
-                      ))}
-                    </NativeSelect>
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <button
-                      type="button"
-                      onClick={() => select(node.id)}
-                      aria-label={`Edit ${METHOD_LABEL[method]} scoring for ${node.title}`}
-                      className="flex min-h-8 w-full items-center rounded-md px-1 text-left hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/30"
-                    >
-                      <MethodChip node={node} />
-                      {!isScored(node) && <span className="text-muted-foreground">—</span>}
-                    </button>
-                  </td>
+                  {isScorable(node.type) ? (
+                    <>
+                    <td className="px-2 py-1.5">
+                      <NativeSelect
+                        aria-label="Scoring method"
+                        value={method}
+                        disabled={locked}
+                        onChange={(e) => update({ op: 'update', fields: { scoringMethod: e.target.value as ScoringMethod } })}
+                      >
+                        {SCORING_METHODS.map((m) => (
+                          <option key={m} value={m}>
+                            {METHOD_LABEL[m]}
+                          </option>
+                        ))}
+                      </NativeSelect>
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <button
+                        type="button"
+                        onClick={() => select(node.id)}
+                        aria-label={`Edit ${METHOD_LABEL[method]} scoring for ${node.title}`}
+                        className="flex min-h-8 w-full items-center rounded-md px-1 text-left hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/30"
+                      >
+                        <MethodChip node={node} />
+                        {!isScored(node) && <span className="text-muted-foreground">—</span>}
+                      </button>
+                    </td>
+                    </>
+                  ) : (
+                    <td colSpan={2} className="px-2 py-1.5 text-xs text-muted-foreground">
+                      Not scored
+                    </td>
+                  )}
                   <td className="px-2 py-1.5 text-xs text-muted-foreground">
                     <span className="block truncate">{memberName(node.updatedBy)}</span>
                     <time dateTime={new Date(node.updatedAt).toISOString()}>

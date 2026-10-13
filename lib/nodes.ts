@@ -13,7 +13,7 @@ import {
   TYPE_LABEL,
   type NodeType,
 } from '@/lib/ost'
-import { isValidAssessment, SCORING_METHODS } from '@/lib/scoring'
+import { isValidAssessment, rejectedScoringFields, SCORING_METHODS } from '@/lib/scoring'
 import { HttpError, auditInsert, newId, requireMember, toTreeNode, type RequestContext } from '@/lib/workspace'
 
 const ADMIN_ONLY_TYPES: NodeType[] = ['goal', 'outcome']
@@ -136,6 +136,10 @@ export async function patchNode(
   assertCanEdit(role, current.type)
 
   if (input.op === 'update') {
+    const unscored = rejectedScoringFields(current.type, input.fields)
+    if (unscored.length > 0) {
+      throw new HttpError(400, `${TYPE_LABEL[current.type]} cards aren't scored`)
+    }
     const changes: AuditChanges = {}
     const set: Partial<typeof schema.node.$inferInsert> = {}
     for (const [key, value] of Object.entries(input.fields) as [FieldName, unknown][]) {

@@ -33,9 +33,10 @@ Canopy is deliberately opinionated. The defaults reflect an interprotation of ho
 - Define measurable product outcomes the team can influence.
 - Capture opportunities as customer needs, pains, or desires.
 - Use optional “How might we” cards when another thinking layer helps.
+- Call out user needs from research as insight cards, so they stay visible in the tree.
 - Explore multiple solutions before committing.
 - Test assumptions with experiments.
-- Use RICE as a common prioritisation language.
+- Score each card the way that suits it: RICE, impact/effort, or a four-factor assessment.
 - Archive decisions instead of quietly deleting the history.
 
 Those opinions are the starting point, not a cage. Fork the project and change the hierarchy, scoring model, labels, or workflow to suit your team.
@@ -44,8 +45,8 @@ Those opinions are the starting point, not a cage. Fork the project and change t
 
 - Visual tree with persistent drag-to-reorder and drag-to-reparent
 - Search that finds a card, expands its ancestors, and centres it in the tree
-- Goal, outcome, How might we, opportunity, solution, and experiment cards
-- Table view with filters, sorting, inline editing, and RICE ranking
+- Goal, outcome, How might we, insight, opportunity, solution, and experiment cards
+- Table view with filters, sorting, inline editing, and ranking by RICE or impact/effort
 - Evidence attached to cards
 - Full activity history for changes, moves, archives, and restores
 - Shared workspaces with admin and contributor roles
@@ -59,8 +60,10 @@ Those opinions are the starting point, not a cage. Fork the project and change t
 Goal
 └── Product outcome
     ├── How might we?      (optional and repeatable)
+    ├── Insight            (a user need from research; a leaf)
     └── Opportunity
         ├── Opportunity    (for useful sub-problems)
+        ├── Insight        (a user need from research; a leaf)
         ├── How might we?  (optional and repeatable)
         └── Solution
             ├── How might we?  (optional)
@@ -68,6 +71,8 @@ Goal
 ```
 
 How might we cards are intentionally flexible. They can be nested and used between the main tiers without turning every card into an unstructured canvas.
+
+Insight cards let UX call out a user need directly. They can sit under an outcome, a How might we, or an opportunity, and nothing hangs beneath them. They aren't scored, because they record what was learned rather than something to prioritise. Link the supporting quotes and research to them with evidence.
 
 RICE is calculated as:
 

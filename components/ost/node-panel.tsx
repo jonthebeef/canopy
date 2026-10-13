@@ -23,6 +23,7 @@ import {
   type NodeStatus,
   type TreeNode,
 } from '@/lib/ost'
+import { isScorable } from '@/lib/scoring'
 import { canAddChild, descendantIds, validNewParents } from '@/lib/tree'
 import { ActivityList } from './activity-list'
 import { useWs } from './context'
@@ -133,11 +134,13 @@ function NodeDetails({ node }: { node: TreeNode }) {
         </NativeSelect>
       </div>
 
-      <ScoringSection
-        node={node}
-        locked={locked}
-        update={(fields) => update({ op: 'update', fields })}
-      />
+      {isScorable(node.type) && (
+        <ScoringSection
+          node={node}
+          locked={locked}
+          update={(fields) => update({ op: 'update', fields })}
+        />
+      )}
 
       <EvidenceSection node={node} />
 

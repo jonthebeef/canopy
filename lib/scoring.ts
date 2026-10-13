@@ -97,6 +97,19 @@ export function effectiveMethod(n: MethodFields): ScoringMethod {
   return fallback
 }
 
+/** Insights record a user need; they aren't prioritised, so they carry no score. */
+export function isScorable(type: NodeType): boolean {
+  return type !== 'insight'
+}
+
+const SCORING_FIELDS = ['reach', 'impact', 'confidence', 'effort', 'scoringMethod', 'assessment'] as const
+
+/** Scoring fields a patch tries to set on a type that isn't scored. Clearing (null) is always fine. */
+export function rejectedScoringFields(type: NodeType, fields: Record<string, unknown>): string[] {
+  if (isScorable(type)) return []
+  return SCORING_FIELDS.filter((f) => fields[f] != null)
+}
+
 export function defaultMethod(type: NodeType): ScoringMethod {
   return type === 'opportunity' ? 'assessment' : 'rice'
 }
