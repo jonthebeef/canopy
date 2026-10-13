@@ -60,10 +60,10 @@ Those opinions are the starting point, not a cage. Fork the project and change t
 Goal
 └── Product outcome
     ├── How might we?      (optional and repeatable)
-    ├── Insight            (a user need from research; a leaf)
+    ├── Insight            (a user need from research)
     └── Opportunity
         ├── Opportunity    (for useful sub-problems)
-        ├── Insight        (a user need from research; a leaf)
+        ├── Insight        (a user need from research)
         ├── How might we?  (optional and repeatable)
         └── Solution
             ├── How might we?  (optional)
@@ -72,7 +72,9 @@ Goal
 
 How might we cards are intentionally flexible. They can be nested and used between the main tiers without turning every card into an unstructured canvas.
 
-Insight cards let UX call out a user need directly. They can sit under an outcome, a How might we, or an opportunity, and nothing hangs beneath them. They aren't scored, because they record what was learned rather than something to prioritise. Link the supporting quotes and research to them with evidence.
+Insight cards let UX call out a user need directly. They aren't scored, because they record what was learned rather than something to prioritise. Link the supporting quotes and research to them with evidence.
+
+The tree is open-ended. The diagram above is the usual shape, not a rule: no card type is the bottom, and any card can go under any other (an opportunity under an insight, an insight under an experiment, a How might we under anything). Only the goal is fixed: it is the single root and takes outcomes. The add dialog offers the usual children first.
 
 RICE is calculated as:
 
