@@ -18,6 +18,7 @@ import {
   effectiveMethod,
   emptyAssessment,
   impactEffortScore,
+  isScorable,
   parseAssessment,
   quadrant,
   serializeAssessment,
@@ -46,6 +47,7 @@ const FACTOR_TINT: Record<AssessmentFactor, string> = {
 
 /** Compact, method-aware score summary for the table and tree cards. Renders nothing if unscored. */
 export function MethodChip({ node, className }: { node: TreeNode; className?: string }) {
+  if (!isScorable(node.type)) return null
   const method = effectiveMethod(node)
 
   if (method === 'rice') return <ScoreChip score={riceScore(node)} className={className} />

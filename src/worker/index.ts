@@ -397,10 +397,11 @@ app.get('/api/w/:id/export', (c) =>
     const lines = nodes
       .filter((node) => includeArchived || !isEffectivelyArchived(node.id, byId))
       .map((node) => {
+        const scorable = isScorable(node.type)
         const method = effectiveMethod(node)
-        const score = method === 'rice' ? riceScore(node) : null
-        const ie = method === 'impact_effort' ? impactEffortScore(node) : null
-        const assessment = parseAssessment(node.assessment)
+        const score = scorable && method === 'rice' ? riceScore(node) : null
+        const ie = scorable && method === 'impact_effort' ? impactEffortScore(node) : null
+        const assessment = scorable ? parseAssessment(node.assessment) : null
         const evidence = evidenceByNode.get(node.id) ?? []
         return [
           node.id,

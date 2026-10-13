@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createNodeSchema } from './nodes'
 import { ALLOWED_CHILDREN, NODE_TYPES, TYPE_LABEL } from './ost'
-import { isScorable } from './scoring'
+import { isScorable, rejectedScoringFields } from './scoring'
 import { canAddChild } from './tree'
 
 describe('insight node type', () => {
@@ -39,6 +39,20 @@ describe('insight node type', () => {
     expect(isScorable('insight')).toBe(false)
     for (const type of NODE_TYPES.filter((t) => t !== 'insight')) {
       expect(isScorable(type)).toBe(true)
+    }
+  })
+
+  it('refuses scoring fields on an insight, but allows clearing them and ordinary edits', () => {
+    expect(rejectedScoringFields('insight', { impact: 5 })).toEqual(['impact'])
+    expect(rejectedScoringFields('insight', { scoringMethod: 'rice', reach: 3 })).toEqual(['reach', 'scoringMethod'])
+    expect(rejectedScoringFields('insight', { assessment: '{}' })).toEqual(['assessment'])
+    expect(rejectedScoringFields('insight', { reach: null, scoringMethod: null })).toEqual([])
+    expect(rejectedScoringFields('insight', { title: 'x', description: 'y', status: 'validated' })).toEqual([])
+  })
+
+  it('accepts scoring fields on every scored type', () => {
+    for (const type of NODE_TYPES.filter((t) => t !== 'insight')) {
+      expect(rejectedScoringFields(type, { impact: 5, scoringMethod: 'rice' })).toEqual([])
     }
   })
 
