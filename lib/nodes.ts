@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { schema } from '@/lib/db'
 import type { AuditChanges } from '@/lib/db/schema'
-import { moveError } from '@/lib/tree'
+import { moveError, parentMap } from '@/lib/tree'
 import { sortOrderBefore } from '@/lib/tree-order'
 import {
   ALLOWED_CHILDREN,
@@ -181,7 +181,7 @@ export async function patchNode(
       .select({ id: schema.node.id, parentId: schema.node.parentId, title: schema.node.title })
       .from(schema.node)
       .where(eq(schema.node.workspaceId, workspaceId))
-    const problem = moveError(current, target, all)
+    const problem = moveError(current, target, parentMap(all))
     if (problem) throw new HttpError(400, problem)
     const byId = new Map(all.map((n) => [n.id, n]))
     const fromTitle = current.parentId ? (byId.get(current.parentId)?.title ?? null) : null

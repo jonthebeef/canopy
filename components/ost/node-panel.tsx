@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Archive, ArchiveRestore, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -24,7 +24,7 @@ import {
   type TreeNode,
 } from '@/lib/ost'
 import { isScorable } from '@/lib/scoring'
-import { canAddChild, descendantIds, validNewParents } from '@/lib/tree'
+import { canAddChild, descendantIds, sitsUnderOptions } from '@/lib/tree'
 import { ActivityList } from './activity-list'
 import { useWs } from './context'
 import { EvidenceSection } from './evidence-section'
@@ -61,7 +61,7 @@ function NodeDetails({ node }: { node: TreeNode }) {
   const locked = !isAdmin && (node.type === 'goal' || node.type === 'outcome')
   const hiddenByAncestor = !node.archivedAt && isEffectivelyArchived(node.id, byId)
   const path = ancestry(node.id, byId)
-  const parents = validNewParents(node, state.nodes)
+  const parents = useMemo(() => sitsUnderOptions(node, state.nodes), [node, state.nodes])
   const childTypes = canAddChild(node.type, isAdmin)
   const update = (fields: Parameters<typeof patchNode>[1] & { op: 'update' }) => patchNode(node.id, fields)
 
@@ -152,10 +152,11 @@ function NodeDetails({ node }: { node: TreeNode }) {
             value={node.parentId}
             onChange={(e) => patchNode(node.id, { op: 'move', parentId: e.target.value })}
           >
-            {parents.map(({ node: p, depth }) => (
+            {parents.map(({ node: p, depth, hidden }) => (
               <option key={p.id} value={p.id}>
                 {'\u00A0\u00A0'.repeat(depth)}
                 {TYPE_LABEL[p.type]}: {p.title}
+                {hidden && ' (in archive)'}
               </option>
             ))}
           </NativeSelect>
